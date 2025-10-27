@@ -1,0 +1,31 @@
+# Project-specific
+agents.md
+AGENTS.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Unit test / coverage reports
+.pytest_cache/
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Data files (common for this type of project)
+*.json
+*.csv
