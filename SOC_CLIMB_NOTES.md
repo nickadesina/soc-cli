@@ -24,7 +24,7 @@
   - `family_links: List[FamilyLink]`
   - `notes: str`
 - Nested types:
-  - `DecisionNode { org, role, scope, start, end }`, where `start/end` are ISO date strings or `None`.
+  - `DecisionNode { org, role, start, end }`, where `start/end` are ISO date strings or `None`.
   - `FamilyLink { person_id, relationship, alliance_signal }`.
 - Validation enforced in model:
   - `tier` in `1..4` when present.

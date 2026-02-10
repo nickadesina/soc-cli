@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 class DecisionNode:
     org: str
     role: str
-    scope: str
     start: str | None = None
     end: str | None = None
 
@@ -47,7 +46,7 @@ class PersonNode:
 
     def __post_init__(self) -> None:
         self.decision_nodes = [
-            node if isinstance(node, DecisionNode) else DecisionNode(**node)
+            _coerce_decision_node(node)
             for node in self.decision_nodes
         ]
         self.family_links = [
@@ -78,7 +77,7 @@ class PersonNode:
         """Create a node from a dictionary representation."""
 
         decision_nodes = [
-            node if isinstance(node, DecisionNode) else DecisionNode(**node)
+            _coerce_decision_node(node)
             for node in payload.get("decision_nodes", [])
         ]
         family_links = [
@@ -98,3 +97,13 @@ def _validate_iso_date(value: str | None, field_name: str) -> None:
         date.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"{field_name} must be an ISO date string, got {value!r}") from exc
+
+
+def _coerce_decision_node(node: DecisionNode | Dict[str, object]) -> DecisionNode:
+    if isinstance(node, DecisionNode):
+        return node
+    if not isinstance(node, dict):
+        raise ValueError("decision_nodes entries must be DecisionNode objects or dict payloads")
+    payload = dict(node)
+    payload.pop("scope", None)
+    return DecisionNode(**payload)

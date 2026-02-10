@@ -18,7 +18,6 @@ from .storage import load_graph_json, save_graph_json
 class DecisionNodePayload(BaseModel):
     org: str
     role: str
-    scope: str
     start: str | None = None
     end: str | None = None
 

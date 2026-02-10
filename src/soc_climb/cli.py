@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--decision-node",
         action="append",
-        help="Decision node JSON object with org/role/scope/start/end",
+        help="Decision node JSON object with org/role/start/end",
     )
     parser.add_argument("--platform", action="append", help="Platform handle in platform=value format")
     parser.add_argument("--ecosystem", action="append", help="Ecosystem label (repeatable)")
