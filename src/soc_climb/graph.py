@@ -40,6 +40,8 @@ class SocGraph:
         self._adjacency.setdefault(person.id, {})
 
     def remove_person(self, person_id: str) -> None:
+        """Remove a person, incident edges, and dangling person-id references."""
+
         self.ensure_person(person_id)
         self._people.pop(person_id, None)
 

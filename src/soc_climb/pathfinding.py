@@ -58,7 +58,11 @@ def dijkstra_shortest_path(
     start: str,
     goal: str,
 ) -> Optional[PathResult]:
-    """Weighted shortest path where stronger ties are cheaper to traverse."""
+    """Weighted shortest path where stronger ties are cheaper to traverse.
+
+    Person metadata (for example tier/dependency_weight) is descriptive-only
+    and does not change traversal cost.
+    """
 
     graph.ensure_person(start)
     graph.ensure_person(goal)
