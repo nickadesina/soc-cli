@@ -1,0 +1,241 @@
+:root {
+  --bg-top: #f9f5e8;
+  --bg-bottom: #d7f0ea;
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-border: rgba(28, 37, 33, 0.14);
+  --ink: #132221;
+  --accent: #0f766e;
+  --accent-strong: #0b5a53;
+  --danger: #b42318;
+  --danger-strong: #8f1f15;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 20%, rgba(255, 227, 168, 0.45), transparent 36%),
+    radial-gradient(circle at 85% 15%, rgba(129, 200, 190, 0.45), transparent 38%),
+    linear-gradient(135deg, var(--bg-top), var(--bg-bottom));
+}
+
+.app-shell {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.4vw, 2.2rem);
+  letter-spacing: 0.01em;
+}
+
+.topbar p {
+  margin: 0.35rem 0 0;
+  opacity: 0.82;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
+  gap: 1rem;
+}
+
+.graph-panel {
+  position: relative;
+  min-height: 75vh;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--panel);
+  backdrop-filter: blur(9px);
+  box-shadow: 0 10px 32px rgba(16, 32, 27, 0.12);
+  overflow: hidden;
+}
+
+#graph {
+  width: 100%;
+  height: 100%;
+}
+
+.sidebar {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.card {
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(21, 44, 38, 0.09);
+  padding: 0.95rem;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 0.7rem;
+}
+
+.stack-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+label {
+  display: grid;
+  gap: 0.28rem;
+  font-size: 0.92rem;
+}
+
+input {
+  width: 100%;
+  border: 1px solid rgba(26, 48, 44, 0.26);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 0.5rem 0.55rem;
+  color: inherit;
+}
+
+input:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.32);
+  outline-offset: 1px;
+}
+
+.inline-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inline-check input {
+  width: auto;
+}
+
+.btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: linear-gradient(160deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover {
+  filter: brightness(1.05);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-secondary {
+  background: #ffffff;
+  border-color: rgba(18, 31, 29, 0.2);
+  color: var(--ink);
+}
+
+.btn-danger {
+  background: linear-gradient(160deg, var(--danger), var(--danger-strong));
+}
+
+.quality-list {
+  list-style: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.quality-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(27, 39, 36, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.35rem 0.45rem;
+}
+
+.quality-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.quality-name {
+  font-weight: 600;
+}
+
+.quality-value {
+  opacity: 0.82;
+}
+
+.quality-delete {
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  background: rgba(255, 240, 238, 0.85);
+  color: #8f1f15;
+  border-radius: 7px;
+  padding: 0.18rem 0.45rem;
+  cursor: pointer;
+}
+
+.edge-details {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  width: min(320px, calc(100% - 1.6rem));
+  border-radius: 13px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.75rem;
+  box-shadow: 0 8px 24px rgba(18, 31, 29, 0.2);
+}
+
+.edge-details h3 {
+  margin-top: 0;
+}
+
+.toast {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: min(420px, calc(100vw - 2rem));
+  border-radius: 10px;
+  padding: 0.62rem 0.75rem;
+  color: #fff;
+  background: rgba(19, 34, 33, 0.92);
+  box-shadow: 0 8px 30px rgba(9, 17, 16, 0.26);
+  z-index: 120;
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 1020px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-panel {
+    min-height: 62vh;
+  }
+}

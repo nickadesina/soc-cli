@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from math import isfinite
 from pathlib import Path
 from typing import Dict, List
 
@@ -61,13 +62,19 @@ def save_graph_csv(
             fieldnames=[
                 "id",
                 "name",
-                "school",
+                "family",
+                "schools",
                 "employers",
                 "societies",
                 "location",
-                "grad_year",
+                "tier",
+                "dependency_weight",
+                "decision_nodes",
                 "platforms",
-                "status_score",
+                "ecosystems",
+                "close_connections",
+                "family_links",
+                "notes",
             ],
         )
         writer.writeheader()
@@ -75,16 +82,24 @@ def save_graph_csv(
             writer.writerow(
                 {
                     "id": person.id,
-                    "name": person.name or "",
-                    "school": list_delimiter.join(person.school),
+                    "name": person.name,
+                    "family": person.family,
+                    "schools": list_delimiter.join(person.schools),
                     "employers": list_delimiter.join(person.employers),
-                    "societies": list_delimiter.join(person.societies),
-                    "location": person.location or "",
-                    "grad_year": person.grad_year if person.grad_year is not None else "",
+                    "societies": list_delimiter.join(
+                        f"{key}{kv_delimiter}{value}" for key, value in person.societies.items()
+                    ),
+                    "location": person.location,
+                    "tier": person.tier if person.tier is not None else "",
+                    "dependency_weight": person.dependency_weight,
+                    "decision_nodes": json.dumps([node.__dict__ for node in person.decision_nodes]),
                     "platforms": list_delimiter.join(
                         f"{key}{kv_delimiter}{value}" for key, value in person.platforms.items()
                     ),
-                    "status_score": person.status_score if person.status_score is not None else "",
+                    "ecosystems": list_delimiter.join(person.ecosystems),
+                    "close_connections": list_delimiter.join(person.close_connections),
+                    "family_links": json.dumps([link.__dict__ for link in person.family_links]),
+                    "notes": person.notes,
                 }
             )
     with edges_file.open("w", newline="", encoding="utf-8") as handle:
@@ -122,24 +137,35 @@ def load_graph_csv(
                 graph.add_person(
                     PersonNode(
                         id=row["id"],
-                        name=row.get("name") or None,
-                        school=_split_list(row.get("school"), list_delimiter),
+                        name=row.get("name") or "",
+                        family=row.get("family") or "",
+                        schools=_split_list(row.get("schools"), list_delimiter),
                         employers=_split_list(row.get("employers"), list_delimiter),
-                        societies=_split_list(row.get("societies"), list_delimiter),
-                        location=row.get("location") or None,
-                        grad_year=int(row["grad_year"]) if row.get("grad_year") else None,
+                        societies=_parse_int_map(row.get("societies"), list_delimiter, kv_delimiter),
+                        location=row.get("location") or "",
+                        tier=int(row["tier"]) if row.get("tier") else None,
+                        dependency_weight=int(row["dependency_weight"])
+                        if row.get("dependency_weight")
+                        else 3,
+                        decision_nodes=_parse_json_list(row.get("decision_nodes"), field_name="decision_nodes"),
                         platforms=_parse_platforms(row.get("platforms"), list_delimiter, kv_delimiter),
-                        status_score=float(row["status_score"]) if row.get("status_score") else None,
+                        ecosystems=_split_list(row.get("ecosystems"), list_delimiter),
+                        close_connections=_split_list(row.get("close_connections"), list_delimiter),
+                        family_links=_parse_json_list(
+                            row.get("family_links"), field_name="family_links"
+                        ),
+                        notes=row.get("notes") or "",
                     )
                 )
     if edges_file.exists():
         with edges_file.open("r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
+                weight = _parse_required_float(row.get("weight"), field_name="weight")
                 graph.add_connection(
                     row["source"],
                     row["target"],
-                    float(row["weight"]),
+                    weight,
                     contexts=_parse_contexts(row.get("contexts"), list_delimiter, kv_delimiter),
                     symmetric=False,
                 )
@@ -166,6 +192,32 @@ def _parse_platforms(value: str | None, list_delimiter: str, kv_delimiter: str) 
 
 
 def _parse_contexts(value: str | None, list_delimiter: str, kv_delimiter: str) -> Dict[str, float]:
+    return _parse_float_map(value, list_delimiter, kv_delimiter, field_name_prefix="context")
+
+
+def _parse_int_map(value: str | None, list_delimiter: str, kv_delimiter: str) -> Dict[str, int]:
+    items: Dict[str, int] = {}
+    if not value:
+        return items
+    for entry in value.split(list_delimiter):
+        if kv_delimiter not in entry:
+            continue
+        key, val = entry.split(kv_delimiter, 1)
+        if not key:
+            continue
+        try:
+            items[key] = int(val)
+        except ValueError as exc:
+            raise ValueError(f"Invalid int for map[{key}]: {val!r}") from exc
+    return items
+
+
+def _parse_float_map(
+    value: str | None,
+    list_delimiter: str,
+    kv_delimiter: str,
+    field_name_prefix: str,
+) -> Dict[str, float]:
     contexts: Dict[str, float] = {}
     if not value:
         return contexts
@@ -174,5 +226,37 @@ def _parse_contexts(value: str | None, list_delimiter: str, kv_delimiter: str) -
             continue
         key, val = entry.split(kv_delimiter, 1)
         if key:
-            contexts[key] = float(val)
+            contexts[key] = _parse_required_float(val, field_name=f"{field_name_prefix}[{key}]")
     return contexts
+
+
+def _parse_required_float(value: str | None, field_name: str) -> float:
+    if value is None or value == "":
+        raise ValueError(f"Missing required numeric value for {field_name}")
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid float for {field_name}: {value!r}") from exc
+    if not isfinite(number):
+        raise ValueError(f"Non-finite float for {field_name}: {value!r}")
+    return number
+
+
+def _parse_optional_float(value: str | None, field_name: str) -> float | None:
+    if value is None or value == "":
+        return None
+    return _parse_required_float(value, field_name=field_name)
+
+
+def _parse_json_list(value: str | None, field_name: str) -> List[dict]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON for {field_name}: {value!r}") from exc
+    if not isinstance(parsed, list):
+        raise ValueError(f"{field_name} must be a JSON list")
+    if not all(isinstance(item, dict) for item in parsed):
+        raise ValueError(f"{field_name} entries must be JSON objects")
+    return parsed

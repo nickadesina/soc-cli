@@ -1,97 +1,136 @@
-# Soc-Climb Backend Toolkit
+# Soc-Climb Codebase Notes (Current)
 
 ## Overview
-- Pure Python module living under `src/soc_climb` with in-memory adjacency representation.
-- Focused on strongly-typed people nodes (`PersonNode`) and weighted ties managed by `SocGraph`.
-- Pathfinding utilities surface user-friendly payloads with per-hop metadata and cost/strength rollups.
+- Core package: `src/soc_climb`.
+- In-memory directed weighted graph (`SocGraph`) with JSON/CSV persistence.
+- FastAPI web API (`src/soc_climb/web.py`) and static Cytoscape client (`src/soc_climb/static/`).
+- Main pathfinding algorithm is Dijkstra with leverage-aware traversal cost.
 
 ## Data Model
-- `PersonNode` captures id, label, affiliations (schools, employers, societies), location, grad year, social handles, and optional status score.
-- `SocGraph` keeps adjacency as `Dict[node_id, Dict[neighbor_id, weight]]` plus context deltas per edge.
-- Edge contexts store contributions (shared orgs, follows, etc.) that can grow via ingestion events.
+- `PersonNode` in `src/soc_climb/models.py` now uses:
+  - `id: str`
+  - `name: str`
+  - `family: str`
+  - `schools: List[str]`
+  - `employers: List[str]`
+  - `location: str`
+  - `tier: int | None` (`1` highest, `4` lowest)
+  - `dependency_weight: int` (`1` strongest, `5` weakest)
+  - `decision_nodes: List[DecisionNode]`
+  - `platforms: Dict[str, str]`
+  - `societies: Dict[str, int]` (membership strength rank, `1..5`, `1` strongest)
+  - `ecosystems: List[str]`
+  - `close_connections: List[str]`
+  - `family_links: List[FamilyLink]`
+  - `notes: str`
+- Nested types:
+  - `DecisionNode { org, role, scope, start, end }`, where `start/end` are ISO date strings or `None`.
+  - `FamilyLink { person_id, relationship, alliance_signal }`.
+- Validation enforced in model:
+  - `tier` in `1..4` when present.
+  - `dependency_weight` in `1..5`.
+  - each `societies[...]` rank in `1..5` and int.
+  - decision node dates must parse with `date.fromisoformat`.
 
-## Pathfinding & Costs
-- DFS with depth limit (default 23) for quick feasibility checks.
-- Dijkstra-based weighted shortest path honours a configurable cost strategy: dynamic (max-weight inversion), inverse weight, or fixed-range normalisation.
-- `PathResult` bundles node details (degree, metadata) and per-edge contexts to optimise UX rendering.
+## Graph Operations (`src/soc_climb/graph.py`)
+- People:
+  - `add_person(person, overwrite=False)`
+  - `remove_person(person_id)` removes incident edges/contexts.
+- Edges:
+  - `add_connection(source, target, weight_delta, contexts=None, symmetric=True)`
+  - `remove_connection(source, target, symmetric=True)`
+- Filtering:
+  - `filter_people(**criteria)` supports list membership and dict key/submap matching.
+- Safety:
+  - no self-loops
+  - finite numeric checks for edge/context deltas
+  - non-positive cumulative tie weight drops the edge
 
-## Weight Handling
-- Each context increment shifts the stored weight; non-positive updates prune the tie to keep traversal safe.
-- `CostComputer` keeps cost conversion logic centralised so all algorithms behave consistently.
+## Pathfinding (`src/soc_climb/pathfinding.py`)
+- `dijkstra_shortest_path(graph, start, goal)`.
+- Base tie traversal cost: `1 / weight`.
+- Cost is adjusted by target node leverage:
+  - `tier_factor = 1.0 + (tier - 1) * 0.15` (`None -> 1.0`)
+  - `dependency_factor = 1.0 + (dependency_weight - 3) * 0.1`
+  - final edge cost: `(1 / weight) * tier_factor * dependency_factor`
+- `PathResult` returns `nodes`, `edges`, `total_cost`, `total_strength`.
+- Node payload includes `tier`, `dependency_weight`, and model metadata fields.
 
-## Storage & Durability
-- JSON snapshot: single file with `people` and `edges` collections, suitable for quick backups.
-- CSV snapshot: two files (`nodes`, `edges`) with configurable delimiters for lists and key/value blobs.
-- Loaders tolerate missing files and rebuild the graph in place.
+## Persistence (`src/soc_climb/storage.py`)
+- JSON:
+  - `save_graph_json` / `load_graph_json`
+  - serializes full `PersonNode` shape + edges/contexts.
+- CSV:
+  - `save_graph_csv` / `load_graph_csv`
+  - person columns:
+    - `id,name,family,schools,employers,societies,location,tier,dependency_weight,decision_nodes,platforms,ecosystems,close_connections,family_links,notes`
+  - `decision_nodes` and `family_links` are JSON-encoded lists in cells.
+  - `societies` stored as key/value pairs in delimited form.
 
-## Ingestion
-- `GraphIngestionService` applies `PersonEvent`/`EdgeEvent` batches for offline loaders.
-- Helper methods (`apply_person`, `apply_edge`) support manual updates without any background threads.
-
-## CLI
-```
+## CLI (`src/soc_climb/cli.py`)
+Run with:
+```bash
 python -m soc_climb.cli <command> [options]
 ```
-- `add-person`: upsert a person (supports repeated `--school`, `--platform`, etc.).
-- `add-connection`: increment tie strength with optional context descriptors.
-- `shortest-path`: choose DFS or Dijkstra and switch cost strategy to see different cost profiles.
-- `filter`: slice people by school, employer, society, location, grad year, or name.
-- Use `--json`, `--nodes-csv`, `--edges-csv` to load/persist snapshots (JSON preferred when both provided).
+
+Supported commands:
+- `add-person`
+- `remove-person`
+- `add-connection`
+- `remove-connection`
+- `shortest-path`
+- `filter`
+
+Selected add-person options:
+- `--id`, `--name`, `--family`, `--school`, `--employer`, `--location`
+- `--tier`, `--dependency-weight`
+- `--society-rank key=rank`
+- `--decision-node '{...json...}'`
+- `--platform key=value`
+- `--ecosystem`, `--close-connection`
+- `--family-link '{...json...}'`
+- `--notes`
+
+Persistence flags:
+- `--json <path>`
+- or `--nodes-csv <path> --edges-csv <path>`
+
+## Web API (`src/soc_climb/web.py`)
+- `GET /api/graph`
+- `POST /api/people`
+- `DELETE /api/people/{person_id}`
+- `POST /api/connections`
+- `DELETE /api/connections?source=&target=&symmetric=`
+- `GET /api/path?source=&target=`
+
+Notes:
+- People endpoint now validates `tier`, `dependency_weight`, and `societies` ranks.
+- Quality endpoints were removed as part of schema migration.
+
+## Web Client (`src/soc_climb/static/`)
+- `index.html`, `app.js`, `styles.css`.
+- Supports:
+  - viewing graph
+  - add/update person (current schema subset)
+  - add/delete connections
+  - delete person
+  - inspect selected node summary
+
+## Ingestion (`src/soc_climb/ingestion.py`)
+- Batch and manual application of:
+  - `PersonEvent`
+  - `EdgeEvent`
 
 ## Tests
-- `pytest` suite exercises graph operations, pathfinding correctness, storage round-trips, ingestion helpers, and end-to-end CLI flows.
-- Run `pytest` from the repo root (configured to auto-add `src` to `PYTHONPATH`).
+- Coverage files:
+  - `tests/test_graph.py`
+  - `tests/test_pathfinding.py`
+  - `tests/test_storage.py`
+  - `tests/test_cli.py`
+  - `tests/test_ingestion.py`
+- Added pathfinding test for leverage-aware route selection.
 
-## Scalability Notes
-- Current design handles ~100k nodes comfortably in memory.
-- For denser graphs, export to a NumPy adjacency matrix or a DuckDB edge list (hooks live in storage/ingestion layers).
-- Cost strategies operate on current graph weights, so traversal semantics hold after incremental updates.
-
-## Next Steps
-- Hook scrapers into `GraphIngestionService` via manual batches and persist deltas.
-- Explore DuckDB-backed loaders when snapshot size grows beyond comfortable JSON payloads.
-
-## Usage Examples
-
-### Python API
-```python
-from soc_climb import PersonNode, SocGraph, GraphIngestionService, dijkstra_shortest_path
-
-graph = SocGraph()
-ingestor = GraphIngestionService(graph)
-
-ingestor.apply_person(PersonNode(id="alex", school=["Stanford"], grad_year=2022))
-ingestor.apply_person(PersonNode(id="blake", employers=["OpenAI"]))
-ingestor.apply_edge("alex", "blake", 4.0, contexts={"school": 1.0, "intro": 3.0})
-
-path = dijkstra_shortest_path(graph, "alex", "blake")
-if path:
-    print(path.node_ids)              # ['alex', 'blake']
-    print(path.total_strength)        # 4.0
-    print(path.edges[0].contexts)     # {'school': 1.0, 'intro': 3.0}
-```
-
-### CLI Workflow
+Run:
 ```bash
-# Add two people and tie them together
-python -m soc_climb.cli add-person --json data/graph.json --id alex --school Stanford --grad-year 2022
-python -m soc_climb.cli add-person --json data/graph.json --id blake --employer OpenAI
-python -m soc_climb.cli add-connection --json data/graph.json --source alex --target blake --weight 4 --context school=1 --context intro=3
-
-# Query the strongest path between alex and blake using Dijkstra
-python -m soc_climb.cli shortest-path --json data/graph.json --source alex --target blake --algorithm dijkstra
-
-# Filter everyone who overlaps with Stanford
-python -m soc_climb.cli filter --json data/graph.json --filter-school Stanford
-```
-
-### CSV Snapshot Round Trip
-```bash
-python -m soc_climb.cli add-person --nodes-csv data/nodes.csv --edges-csv data/edges.csv --id casey --society AlphaBeta
-python -m soc_climb.cli add-connection --nodes-csv data/nodes.csv --edges-csv data/edges.csv --source casey --target alex --weight 2 --context society=1
-
-# Back in Python
-from soc_climb import load_graph_csv
-snapshot = load_graph_csv("data/nodes.csv", "data/edges.csv")
-print(snapshot.get_edge_weight("casey", "alex"))
+pytest -q
 ```

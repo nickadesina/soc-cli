@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soc Climb Studio</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Soc Climb Studio</h1>
+          <p>View the social graph and manage people and ties.</p>
+        </div>
+        <button id="refresh-btn" class="btn btn-secondary">Refresh Graph</button>
+      </header>
+
+      <main class="layout">
+        <section class="graph-panel">
+          <div id="graph"></div>
+          <div id="edge-details" class="edge-details hidden">
+            <h3>Selected Edge</h3>
+            <p id="edge-summary"></p>
+            <button id="delete-edge-btn" class="btn btn-danger">Delete Connection</button>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="card">
+            <h2>Add / Update Person</h2>
+            <form id="add-person-form" class="stack-form">
+              <label>
+                ID
+                <input type="text" name="id" required />
+              </label>
+              <label>
+                Name
+                <input type="text" name="name" />
+              </label>
+              <label>
+                Family
+                <input type="text" name="family" />
+              </label>
+              <label>
+                Location
+                <input type="text" name="location" />
+              </label>
+              <label>
+                Tier (1-4)
+                <input type="number" name="tier" min="1" max="4" />
+              </label>
+              <label>
+                Dependency Weight (1-5)
+                <input type="number" name="dependency_weight" min="1" max="5" value="3" />
+              </label>
+              <button type="submit" class="btn">Save Person</button>
+            </form>
+          </section>
+
+          <section class="card">
+            <h2>Add Connection</h2>
+            <form id="add-connection-form" class="stack-form">
+              <label>
+                Source
+                <input type="text" name="source" list="person-id-options" required />
+              </label>
+              <label>
+                Target
+                <input type="text" name="target" list="person-id-options" required />
+              </label>
+              <label>
+                Weight
+                <input type="number" name="weight" step="0.1" min="0.1" required />
+              </label>
+              <label>
+                Context Name
+                <input type="text" name="context_name" placeholder="school / intro / coworker" />
+              </label>
+              <label>
+                Context Value
+                <input type="number" name="context_value" step="0.1" />
+              </label>
+              <label class="inline-check">
+                <input type="checkbox" name="symmetric" checked />
+                Symmetric (two-way tie)
+              </label>
+              <button type="submit" class="btn">Add Connection</button>
+            </form>
+            <datalist id="person-id-options"></datalist>
+          </section>
+
+          <section class="card" id="person-details-card">
+            <h2>Person Details</h2>
+            <div id="person-details-empty">
+              <p>Select a node in the graph to inspect details.</p>
+            </div>
+            <div id="person-details-content" class="hidden">
+              <p id="person-summary"></p>
+              <button id="delete-person-btn" class="btn btn-danger">Delete Person</button>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
