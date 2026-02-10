@@ -32,6 +32,21 @@
   - each `societies[...]` rank in `1..5` and int.
   - decision node dates must parse with `date.fromisoformat`.
 
+## Schema to Algorithm Coupling
+- The graph algorithm is still edge-centric (`SocGraph` stores weighted ties in adjacency maps), but the person schema now influences traversal cost.
+- In `dijkstra_shortest_path`:
+  - edge strength still drives base cost (`1 / weight`).
+  - the destination node's `tier` and `dependency_weight` adjust that base cost.
+- Current leverage adjustment in `src/soc_climb/pathfinding.py`:
+  - `tier_factor = 1.0 + (tier - 1) * 0.15` (`tier=None` -> `1.0`)
+  - `dependency_factor = 1.0 + (dependency_weight - 3) * 0.1`
+  - `edge_cost = (1 / weight) * tier_factor * dependency_factor`
+- Practical effect:
+  - stronger ties lower cost.
+  - lower tier number (`1`) and lower dependency weight (`1`) reduce traversal cost.
+  - higher tier number (`4`) and higher dependency weight (`5`) increase traversal cost.
+- `societies` is currently metadata for filtering and output context; it does not directly alter path cost yet.
+
 ## Graph Operations (`src/soc_climb/graph.py`)
 - People:
   - `add_person(person, overwrite=False)`
@@ -65,7 +80,26 @@
   - person columns:
     - `id,name,family,schools,employers,societies,location,tier,dependency_weight,decision_nodes,platforms,ecosystems,close_connections,family_links,notes`
   - `decision_nodes` and `family_links` are JSON-encoded lists in cells.
-  - `societies` stored as key/value pairs in delimited form.
+  - `societies` encoding is explicit key/value rank pairs:
+    - default list delimiter: `|`
+    - default key/value delimiter: `=`
+    - example cell: `ivy_club=1|book_society=3|board_circle=5`
+  - `societies` values are parsed as ints and then validated by `PersonNode` (`1..5`).
+
+## Societies Encoding Detail
+- Canonical model type: `Dict[str, int]` where key is society identifier and value is rank (`1` strongest, `5` weakest).
+- JSON payload shape (API + snapshot):
+  - `"societies": {"ivy_club": 1, "book_society": 3}`
+- CLI input:
+  - repeatable flag `--society-rank key=rank`
+  - example: `--society-rank ivy_club=1 --society-rank book_society=3`
+- CSV node storage:
+  - one string column `societies`
+  - encoded as `key=rank` pairs joined by `|`
+  - decoded by `_parse_int_map` in `src/soc_climb/storage.py`
+- Filtering behavior:
+  - graph-level filter accepts dict-key matching for societies
+  - CLI `--filter-society ivy_club` checks presence of that key in the `societies` map.
 
 ## CLI (`src/soc_climb/cli.py`)
 Run with:
