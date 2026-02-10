@@ -6,7 +6,6 @@ from math import inf, isfinite
 from typing import Dict, List, Optional, Sequence
 
 from .graph import SocGraph
-from .models import PersonNode
 
 
 @dataclass
@@ -74,7 +73,7 @@ def dijkstra_shortest_path(
         if node == goal:
             break
         for neighbor, weight in graph.adjacency.get(node, {}).items():
-            edge_cost = _edge_cost(weight, graph.get_person(neighbor))
+            edge_cost = _edge_cost(weight)
             if edge_cost == inf:
                 continue
             new_cost = cost_so_far + edge_cost
@@ -95,23 +94,10 @@ def dijkstra_shortest_path(
     return _build_path_result(graph, node_path)
 
 
-def _edge_cost(weight: float, target_person: PersonNode) -> float:
+def _edge_cost(weight: float) -> float:
     if not isfinite(weight) or weight <= 0:
         return inf
-    base_cost = 1.0 / weight
-    tier_factor = _tier_factor(target_person.tier)
-    dependency_factor = _dependency_factor(target_person.dependency_weight)
-    return base_cost * tier_factor * dependency_factor
-
-
-def _tier_factor(tier: int | None) -> float:
-    if tier is None:
-        return 1.0
-    return 1.0 + (tier - 1) * 0.15
-
-
-def _dependency_factor(dependency_weight: int) -> float:
-    return 1.0 + (dependency_weight - 3) * 0.1
+    return 1.0 / weight
 
 
 def _build_path_result(graph: SocGraph, nodes: Sequence[str]) -> PathResult:
@@ -124,7 +110,7 @@ def _build_path_result(graph: SocGraph, nodes: Sequence[str]) -> PathResult:
         weight = graph.get_edge_weight(source, target)
         if weight is None:
             raise ValueError(f"Missing edge from {source} to {target}")
-        cost = _edge_cost(weight, graph.get_person(target))
+        cost = _edge_cost(weight)
         total_cost += cost
         total_strength += weight
         edges.append(

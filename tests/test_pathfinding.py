@@ -33,18 +33,19 @@ def test_dijkstra_returns_none_when_unreachable(sample_graph: SocGraph):
     assert dijkstra_shortest_path(sample_graph, "isolated", "a") is None
 
 
-def test_dijkstra_prefers_higher_leverage_targets_when_strengths_match():
+def test_dijkstra_ignores_tier_and_dependency_weight_for_cost():
     graph = SocGraph()
     graph.add_person(PersonNode(id="start"))
-    graph.add_person(PersonNode(id="elite", tier=1, dependency_weight=1))
-    graph.add_person(PersonNode(id="weak", tier=4, dependency_weight=5))
-    graph.add_person(PersonNode(id="goal", tier=2, dependency_weight=3))
+    graph.add_person(PersonNode(id="stronger", tier=4, dependency_weight=5))
+    graph.add_person(PersonNode(id="weaker", tier=1, dependency_weight=1))
+    graph.add_person(PersonNode(id="goal"))
 
-    graph.add_connection("start", "elite", 2.0, symmetric=False)
-    graph.add_connection("start", "weak", 2.0, symmetric=False)
-    graph.add_connection("elite", "goal", 2.0, symmetric=False)
-    graph.add_connection("weak", "goal", 2.0, symmetric=False)
+    graph.add_connection("start", "stronger", 2.0, symmetric=False)
+    graph.add_connection("stronger", "goal", 2.0, symmetric=False)
+    graph.add_connection("start", "weaker", 1.8, symmetric=False)
+    graph.add_connection("weaker", "goal", 1.8, symmetric=False)
 
     result = dijkstra_shortest_path(graph, "start", "goal")
     assert result is not None
-    assert result.node_ids == ["start", "elite", "goal"]
+    assert result.node_ids == ["start", "stronger", "goal"]
+    assert result.total_cost == pytest.approx(1.0)

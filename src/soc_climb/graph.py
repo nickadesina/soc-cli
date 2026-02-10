@@ -52,6 +52,18 @@ class SocGraph:
                 neighbors.pop(person_id, None)
                 self._edge_contexts.pop((source, person_id), None)
 
+        for person in self._people.values():
+            person.close_connections = [
+                connection_id
+                for connection_id in person.close_connections
+                if connection_id != person_id
+            ]
+            person.family_links = [
+                link
+                for link in person.family_links
+                if link.person_id != person_id
+            ]
+
         # Edge removals can change the max tie strength.
         self._max_weight_stale = True
 

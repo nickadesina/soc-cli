@@ -4,7 +4,7 @@
 - Core package: `src/soc_climb`.
 - In-memory directed weighted graph (`SocGraph`) with JSON/CSV persistence.
 - FastAPI web API (`src/soc_climb/web.py`) and static Cytoscape client (`src/soc_climb/static/`).
-- Main pathfinding algorithm is Dijkstra with leverage-aware traversal cost.
+- Main pathfinding algorithm is Dijkstra with edge-strength cost only.
 
 ## Data Model
 - `PersonNode` in `src/soc_climb/models.py` now uses:
@@ -14,8 +14,8 @@
   - `schools: List[str]`
   - `employers: List[str]`
   - `location: str`
-  - `tier: int | None` (`1` highest, `4` lowest)
-  - `dependency_weight: int` (`1` strongest, `5` weakest)
+  - `tier: int | None` (`1` highest, `4` lowest; descriptive only)
+  - `dependency_weight: int` (`1` strongest, `5` weakest; descriptive only)
   - `decision_nodes: List[DecisionNode]`
   - `platforms: Dict[str, str]`
   - `societies: Dict[str, int]` (membership strength rank, `1..5`, `1` strongest)
@@ -32,25 +32,20 @@
   - each `societies[...]` rank in `1..5` and int.
   - decision node dates must parse with `date.fromisoformat`.
 
-## Schema to Algorithm Coupling
-- The graph algorithm is still edge-centric (`SocGraph` stores weighted ties in adjacency maps), but the person schema now influences traversal cost.
-- In `dijkstra_shortest_path`:
-  - edge strength still drives base cost (`1 / weight`).
-  - the destination node's `tier` and `dependency_weight` adjust that base cost.
-- Current leverage adjustment in `src/soc_climb/pathfinding.py`:
-  - `tier_factor = 1.0 + (tier - 1) * 0.15` (`tier=None` -> `1.0`)
-  - `dependency_factor = 1.0 + (dependency_weight - 3) * 0.1`
-  - `edge_cost = (1 / weight) * tier_factor * dependency_factor`
-- Practical effect:
-  - stronger ties lower cost.
-  - lower tier number (`1`) and lower dependency weight (`1`) reduce traversal cost.
-  - higher tier number (`4`) and higher dependency weight (`5`) increase traversal cost.
-- `societies` is currently metadata for filtering and output context; it does not directly alter path cost yet.
+## Schema vs Algorithm Separation
+- `tier` and `dependency_weight` are fully descriptive person attributes (like `notes`).
+- They are serialized, validated, filterable, and included in path output metadata.
+- They do not affect path scoring or traversal decisions.
+- Pathfinding cost is computed only from edge weight (`1 / weight`).
+- `societies` is also descriptive metadata used for filtering and output context; it does not alter path cost.
 
 ## Graph Operations (`src/soc_climb/graph.py`)
 - People:
   - `add_person(person, overwrite=False)`
-  - `remove_person(person_id)` removes incident edges/contexts.
+  - `remove_person(person_id)` guarantees:
+    - removal of all incident edges and edge contexts
+    - removal of `person_id` from every remaining node's `close_connections`
+    - removal of every remaining `family_links` entry where `family_link.person_id == person_id`
 - Edges:
   - `add_connection(source, target, weight_delta, contexts=None, symmetric=True)`
   - `remove_connection(source, target, symmetric=True)`
@@ -64,10 +59,7 @@
 ## Pathfinding (`src/soc_climb/pathfinding.py`)
 - `dijkstra_shortest_path(graph, start, goal)`.
 - Base tie traversal cost: `1 / weight`.
-- Cost is adjusted by target node leverage:
-  - `tier_factor = 1.0 + (tier - 1) * 0.15` (`None -> 1.0`)
-  - `dependency_factor = 1.0 + (dependency_weight - 3) * 0.1`
-  - final edge cost: `(1 / weight) * tier_factor * dependency_factor`
+- Person metadata does not modify cost.
 - `PathResult` returns `nodes`, `edges`, `total_cost`, `total_strength`.
 - Node payload includes `tier`, `dependency_weight`, and model metadata fields.
 
@@ -162,7 +154,9 @@ Notes:
   - `tests/test_storage.py`
   - `tests/test_cli.py`
   - `tests/test_ingestion.py`
-- Added pathfinding test for leverage-aware route selection.
+- Includes explicit tests that:
+  - `remove_person` cleans dangling `close_connections` and `family_links` references
+  - `tier` / `dependency_weight` do not influence pathfinding cost
 
 Run:
 ```bash

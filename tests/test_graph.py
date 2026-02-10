@@ -48,6 +48,67 @@ def test_remove_person_drops_incident_edges():
     assert graph.get_edge_weight("c", "b") is None
 
 
+def test_remove_person_also_cleans_close_connections_and_family_links():
+    graph = SocGraph()
+    graph.add_person(
+        PersonNode(
+            id="a",
+            close_connections=["b", "c"],
+            family_links=[
+                {
+                    "person_id": "b",
+                    "relationship": "sibling",
+                    "alliance_signal": True,
+                },
+                {
+                    "person_id": "z",
+                    "relationship": "cousin",
+                    "alliance_signal": False,
+                },
+                {
+                    "person_id": None,
+                    "relationship": "mentor-family",
+                    "alliance_signal": True,
+                },
+            ],
+        )
+    )
+    graph.add_person(
+        PersonNode(
+            id="b",
+            close_connections=["a"],
+            family_links=[
+                {
+                    "person_id": "a",
+                    "relationship": "sibling",
+                    "alliance_signal": True,
+                }
+            ],
+        )
+    )
+    graph.add_person(
+        PersonNode(
+            id="c",
+            close_connections=["b"],
+            family_links=[
+                {
+                    "person_id": "b",
+                    "relationship": "friend-family",
+                    "alliance_signal": False,
+                }
+            ],
+        )
+    )
+
+    graph.remove_person("b")
+
+    assert "b" not in graph.people
+    assert graph.get_person("a").close_connections == ["c"]
+    assert graph.get_person("c").close_connections == []
+    assert [link.person_id for link in graph.get_person("a").family_links] == ["z", None]
+    assert graph.get_person("c").family_links == []
+
+
 def test_remove_connection_drops_both_directions_by_default():
     graph = SocGraph()
     graph.add_person(PersonNode(id="a"))
