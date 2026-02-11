@@ -138,6 +138,25 @@ Notes:
   - `false`: image-only extraction path.
   - `true`: extraction path with OpenAI web search tool enabled.
 
+## Run Web App
+- Install web dependencies in the same interpreter you run the server with:
+```bash
+py -3.12 -m pip install -e .[web]
+```
+- Start server from repo root (Python 3.12):
+```bash
+py -3.12 -m uvicorn soc_climb.web:app --reload --app-dir src
+```
+- Open site:
+  - `http://127.0.0.1:8000/`
+- API docs:
+  - `http://127.0.0.1:8000/docs`
+- Troubleshooting:
+  - `Form data requires "python-multipart"`:
+    run `py -3.12 -m pip install python-multipart` (or rerun `py -3.12 -m pip install -e .[web]`).
+  - `No module named 'soc_climb'`:
+    ensure `--app-dir src` is exactly `src` (not `sr`).
+
 ## Web Client (`src/soc_climb/static/`)
 - `index.html`, `app.js`, `styles.css`.
 - Supports:
