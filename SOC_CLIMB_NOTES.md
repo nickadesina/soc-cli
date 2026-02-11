@@ -134,6 +134,9 @@ Persistence flags:
 Notes:
 - People endpoint now validates `tier`, `dependency_weight`, and `societies` ranks.
 - Quality endpoints were removed as part of schema migration.
+- `POST /api/extract-person` accepts a `web_search` form flag (default `false`):
+  - `false`: image-only extraction path.
+  - `true`: extraction path with OpenAI web search tool enabled.
 
 ## Web Client (`src/soc_climb/static/`)
 - `index.html`, `app.js`, `styles.css`.
@@ -146,6 +149,8 @@ Notes:
     - tier `4` = green
   - add/update person (current schema subset)
   - paste/drop/select image and extract visible person fields into add-person form
+  - `Web Search` toggle in extract panel is off by default
+  - extracted values populate standard editable form fields; user can modify before save
   - add/delete connections
   - delete person
   - inspect selected node summary

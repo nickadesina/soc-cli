@@ -25,6 +25,7 @@ const imageDropzone = document.getElementById("image-dropzone");
 const imageFileInput = document.getElementById("image-file-input");
 const imagePreviewWrap = document.getElementById("image-preview-wrap");
 const imagePreview = document.getElementById("image-preview");
+const webSearchToggle = document.getElementById("web-search-toggle");
 const extractImageBtn = document.getElementById("extract-image-btn");
 
 function init() {
@@ -484,6 +485,7 @@ async function onExtractImage() {
   }
   const payload = new FormData();
   payload.append("image", state.selectedImageFile);
+  payload.append("web_search", webSearchToggle.checked ? "true" : "false");
   extractImageBtn.disabled = true;
   extractImageBtn.textContent = "Extracting...";
   try {

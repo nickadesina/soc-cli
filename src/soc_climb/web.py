@@ -9,7 +9,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -112,7 +112,10 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
         return {"status": "ok", "person": person.to_dict()}
 
     @app.post("/api/extract-person")
-    async def extract_person(image: UploadFile = File(...)) -> Dict[str, object]:
+    async def extract_person(
+        image: UploadFile = File(...),
+        web_search: bool = Form(False),
+    ) -> Dict[str, object]:
         if not image.content_type or not image.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="image must be an image upload")
         image_bytes = await image.read()
@@ -120,7 +123,13 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
             raise HTTPException(status_code=400, detail="image cannot be empty")
         if len(image_bytes) > 8 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="image must be <= 8MB")
-        extracted = _extract_person_fields_from_image(image_bytes, image.content_type)
+        if web_search:
+            extracted = _extract_person_fields_from_image_with_web_search(
+                image_bytes,
+                image.content_type,
+            )
+        else:
+            extracted = _extract_person_fields_from_image(image_bytes, image.content_type)
         return {"status": "ok", "fields": extracted}
 
     @app.delete("/api/people/{person_id}")
@@ -324,6 +333,120 @@ def _extract_person_fields_from_image(image_bytes: bytes, image_mime: str) -> Di
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=502, detail="OpenAI response parsing failed") from exc
 
+    return _normalise_extracted_fields(extracted)
+
+
+def _extract_person_fields_from_image_with_web_search(
+    image_bytes: bytes,
+    image_mime: str,
+) -> Dict[str, object]:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
+
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    image_data_url = f"data:{image_mime};base64,{image_b64}"
+    schema = _person_extract_schema()
+    body = {
+        "model": "gpt-5-nano-2025-08-07",
+        "tools": [{"type": "web_search"}],
+        "tool_choice": "auto",
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Extract a person profile from an image. Use null for unknown fields. "
+                            "If id is unknown, create a lowercase snake_case id from the best full name guess. "
+                            "Use web search only when needed to verify/complete visible details."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Read this image and extract person fields."},
+                    {"type": "input_image", "image_url": image_data_url},
+                ],
+            },
+        ],
+        "text": {"format": schema},
+    }
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response_json = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise HTTPException(status_code=502, detail=f"OpenAI API error: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail="Failed to connect to OpenAI API") from exc
+
+    text_output = _response_output_text(response_json)
+    if not text_output:
+        raise HTTPException(status_code=502, detail="OpenAI response parsing failed")
+    try:
+        extracted = json.loads(text_output)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="OpenAI response parsing failed") from exc
+    return _normalise_extracted_fields(extracted)
+
+
+def _person_extract_schema() -> Dict[str, object]:
+    return {
+        "type": "json_schema",
+        "name": "person_extract",
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "id": {"type": ["string", "null"]},
+                "name": {"type": ["string", "null"]},
+                "family": {"type": ["string", "null"]},
+                "location": {"type": ["string", "null"]},
+                "tier": {"type": ["integer", "null"], "minimum": 1, "maximum": 4},
+                "dependency_weight": {"type": ["integer", "null"], "minimum": 1, "maximum": 5},
+            },
+            "required": ["id", "name", "family", "location", "tier", "dependency_weight"],
+        },
+        "strict": True,
+    }
+
+
+def _response_output_text(response_json: Dict[str, object]) -> str | None:
+    output_text = response_json.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+    output_items = response_json.get("output")
+    if not isinstance(output_items, list):
+        return None
+    for item in output_items:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for content_item in content:
+            if not isinstance(content_item, dict):
+                continue
+            text = content_item.get("text")
+            if isinstance(text, str) and text.strip():
+                return text
+    return None
+
+
+def _normalise_extracted_fields(extracted: Dict[str, object]) -> Dict[str, object]:
     return {
         "id": _clean_optional_string(extracted.get("id")),
         "name": _clean_optional_string(extracted.get("name")),
