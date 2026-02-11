@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = ["pytest"]
-web = ["fastapi>=0.110", "uvicorn>=0.30"]
+web = ["fastapi>=0.110", "uvicorn>=0.30", "python-multipart>=0.0.9"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

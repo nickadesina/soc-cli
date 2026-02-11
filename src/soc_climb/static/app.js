@@ -4,6 +4,8 @@ const state = {
   selectedNodeId: null,
   selectedEdge: null,
   toastTimer: null,
+  selectedImageFile: null,
+  selectedImageUrl: null,
 };
 
 const graphContainer = document.getElementById("graph");
@@ -19,6 +21,11 @@ const personSummary = document.getElementById("person-summary");
 const deletePersonBtn = document.getElementById("delete-person-btn");
 const personIdOptions = document.getElementById("person-id-options");
 const toast = document.getElementById("toast");
+const imageDropzone = document.getElementById("image-dropzone");
+const imageFileInput = document.getElementById("image-file-input");
+const imagePreviewWrap = document.getElementById("image-preview-wrap");
+const imagePreview = document.getElementById("image-preview");
+const extractImageBtn = document.getElementById("extract-image-btn");
 
 function init() {
   addPersonForm.addEventListener("submit", onSubmitPerson);
@@ -28,6 +35,14 @@ function init() {
   refreshBtn.addEventListener("click", () => {
     refreshGraph();
   });
+  imageDropzone.addEventListener("click", () => imageFileInput.click());
+  imageDropzone.addEventListener("dragover", onImageDragOver);
+  imageDropzone.addEventListener("dragleave", onImageDragLeave);
+  imageDropzone.addEventListener("drop", onImageDrop);
+  imageDropzone.addEventListener("paste", onImagePaste);
+  imageDropzone.addEventListener("keydown", onImageDropzoneKeydown);
+  imageFileInput.addEventListener("change", onImageFileChosen);
+  extractImageBtn.addEventListener("click", onExtractImage);
 
   if (!window.cytoscape) {
     showToast("Cytoscape failed to load, so graph rendering is unavailable.", true);
@@ -47,20 +62,57 @@ function initGraph() {
         style: {
           label: "data(label)",
           "font-size": 11,
+          "font-weight": 700,
           "text-valign": "center",
           "text-halign": "center",
           "background-color": "#0f766e",
           color: "#ffffff",
           "text-outline-color": "#0f766e",
           "text-outline-width": 1,
+          "shadow-color": "#0f766e",
+          "shadow-blur": 12,
+          "shadow-opacity": 0.85,
           width: 48,
           height: 48,
         },
       },
       {
+        selector: "node.tier-1",
+        style: {
+          "background-color": "#ff1744",
+          "text-outline-color": "#ff1744",
+          "shadow-color": "#ff1744",
+        },
+      },
+      {
+        selector: "node.tier-2",
+        style: {
+          "background-color": "#ff9100",
+          "text-outline-color": "#ff9100",
+          "shadow-color": "#ff9100",
+        },
+      },
+      {
+        selector: "node.tier-3",
+        style: {
+          "background-color": "#ffea00",
+          color: "#161616",
+          "text-outline-color": "#ffea00",
+          "shadow-color": "#ffea00",
+        },
+      },
+      {
+        selector: "node.tier-4",
+        style: {
+          "background-color": "#00e676",
+          color: "#0a1f16",
+          "text-outline-color": "#00e676",
+          "shadow-color": "#00e676",
+        },
+      },
+      {
         selector: "node:selected",
         style: {
-          "background-color": "#065f59",
           "border-width": 3,
           "border-color": "#facc15",
         },
@@ -138,7 +190,9 @@ function renderGraph() {
     data: {
       id: person.id,
       label: person.name || person.id,
+      tier: person.tier,
     },
+    classes: tierClass(person.tier),
   }));
 
   const edgeElements = state.graph.edges.map((edge) => ({
@@ -364,6 +418,102 @@ async function onDeleteEdge() {
   }
 }
 
+function onImageDropzoneKeydown(event) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    imageFileInput.click();
+  }
+}
+
+function onImageDragOver(event) {
+  event.preventDefault();
+  imageDropzone.classList.add("drag-over");
+}
+
+function onImageDragLeave(event) {
+  event.preventDefault();
+  imageDropzone.classList.remove("drag-over");
+}
+
+function onImageDrop(event) {
+  event.preventDefault();
+  imageDropzone.classList.remove("drag-over");
+  const file = event.dataTransfer?.files?.[0];
+  setSelectedImageFile(file);
+}
+
+function onImagePaste(event) {
+  const items = event.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      setSelectedImageFile(file);
+      event.preventDefault();
+      return;
+    }
+  }
+}
+
+function onImageFileChosen(event) {
+  const file = event.target?.files?.[0];
+  setSelectedImageFile(file);
+}
+
+function setSelectedImageFile(file) {
+  if (!file) {
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    showToast("Please choose an image file.", true);
+    return;
+  }
+  state.selectedImageFile = file;
+  if (state.selectedImageUrl) {
+    URL.revokeObjectURL(state.selectedImageUrl);
+  }
+  state.selectedImageUrl = URL.createObjectURL(file);
+  imagePreview.src = state.selectedImageUrl;
+  imagePreviewWrap.classList.remove("hidden");
+  showToast("Image ready. Click Extract Fields.");
+}
+
+async function onExtractImage() {
+  if (!state.selectedImageFile) {
+    showToast("Paste or choose an image first.", true);
+    return;
+  }
+  const payload = new FormData();
+  payload.append("image", state.selectedImageFile);
+  extractImageBtn.disabled = true;
+  extractImageBtn.textContent = "Extracting...";
+  try {
+    const response = await fetch("/api/extract-person", {
+      method: "POST",
+      body: payload,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(body?.detail || "Extraction failed");
+    }
+    applyExtractedFields(body?.fields || {});
+    showToast("Fields extracted. Review before saving.");
+  } catch (error) {
+    showToast(error.message || "Extraction failed", true);
+  } finally {
+    extractImageBtn.disabled = false;
+    extractImageBtn.textContent = "Extract Fields";
+  }
+}
+
+function applyExtractedFields(fields) {
+  setFieldIfPresent(addPersonForm, "id", fields.id);
+  setFieldIfPresent(addPersonForm, "name", fields.name);
+  setFieldIfPresent(addPersonForm, "family", fields.family);
+  setFieldIfPresent(addPersonForm, "location", fields.location);
+  setFieldIfPresent(addPersonForm, "tier", fields.tier);
+  setFieldIfPresent(addPersonForm, "dependency_weight", fields.dependency_weight);
+}
+
 function formatPersonSummary(person) {
   const name = person.name ? `${person.name} (${person.id})` : person.id;
   const family = person.family || "n/a";
@@ -371,6 +521,14 @@ function formatPersonSummary(person) {
   const tier = person.tier ?? "n/a";
   const dependency = person.dependency_weight ?? "n/a";
   return `${name} | family: ${family} | location: ${location} | tier: ${tier} | dependency: ${dependency}`;
+}
+
+function tierClass(tier) {
+  const parsedTier = Number(tier);
+  if (!Number.isInteger(parsedTier) || parsedTier < 1 || parsedTier > 4) {
+    return "";
+  }
+  return `tier-${parsedTier}`;
 }
 
 function trimOrEmpty(value) {
@@ -408,6 +566,17 @@ function setFieldChecked(form, name, checked) {
   if (field) {
     field.checked = checked;
   }
+}
+
+function setFieldIfPresent(form, name, value) {
+  if (value === null || value === undefined || value === "") {
+    return;
+  }
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  field.value = `${value}`;
 }
 
 async function requestJson(method, url, payload = undefined) {

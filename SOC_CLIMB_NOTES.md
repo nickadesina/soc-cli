@@ -67,6 +67,7 @@
 - JSON:
   - `save_graph_json` / `load_graph_json`
   - serializes full `PersonNode` shape + edges/contexts.
+  - default web snapshot path is `data/graph.json` (set in `create_app`).
 - CSV:
   - `save_graph_csv` / `load_graph_csv`
   - person columns:
@@ -124,6 +125,7 @@ Persistence flags:
 ## Web API (`src/soc_climb/web.py`)
 - `GET /api/graph`
 - `POST /api/people`
+- `POST /api/extract-person` (multipart image upload; extracts person form fields via OpenAI vision model)
 - `DELETE /api/people/{person_id}`
 - `POST /api/connections`
 - `DELETE /api/connections?source=&target=&symmetric=`
@@ -137,7 +139,13 @@ Notes:
 - `index.html`, `app.js`, `styles.css`.
 - Supports:
   - viewing graph
+  - tier-based neon node colors:
+    - tier `1` = red
+    - tier `2` = orange
+    - tier `3` = yellow
+    - tier `4` = green
   - add/update person (current schema subset)
+  - paste/drop/select image and extract visible person fields into add-person form
   - add/delete connections
   - delete person
   - inspect selected node summary

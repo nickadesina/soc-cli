@@ -59,6 +59,21 @@
           </section>
 
           <section class="card">
+            <h2>Extract From Image</h2>
+            <div id="image-dropzone" class="image-dropzone" tabindex="0">
+              Paste (`Ctrl+V`) or drop an image here
+            </div>
+            <label class="file-picker-label">
+              Or choose file
+              <input id="image-file-input" type="file" accept="image/*" />
+            </label>
+            <div id="image-preview-wrap" class="image-preview-wrap hidden">
+              <img id="image-preview" alt="Pasted preview" />
+            </div>
+            <button id="extract-image-btn" class="btn" type="button">Extract Fields</button>
+          </section>
+
+          <section class="card">
             <h2>Add Connection</h2>
             <form id="add-connection-form" class="stack-form">
               <label>
