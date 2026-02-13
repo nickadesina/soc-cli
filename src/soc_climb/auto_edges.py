@@ -29,7 +29,6 @@ CAP_PLATFORMS = 2
 CAP_LOCATION = 2
 CAP_DECISION = 10
 CAP_SOCIETIES = 8
-CAP_FAMILY = 8
 
 # Explicit tie policy.
 EXPLICIT_DISTANCE = 2
@@ -181,30 +180,31 @@ def edge_distance_value(
     explicit_link = False
     score = 0
 
-    # Explicit declared ties (dominant).
-    new_close = set(new_person.close_connections or [])
-    other_close = set(other_person.close_connections or [])
-    if other_person.id in new_close:
+    # Explicit family/friends ties from unified link model.
+    new_link_ids = {
+        link.person_id for link in (new_person.family_friends_links or []) if link.person_id
+    }
+    other_link_ids = {
+        link.person_id for link in (other_person.family_friends_links or []) if link.person_id
+    }
+    if other_person.id in new_link_ids:
         score += 12
         explicit_link = True
-    if new_person.id in other_close:
+    if new_person.id in other_link_ids:
         score += 10
         explicit_link = True
 
-    # Explicit family-link ties.
-    new_family_ids = {link.person_id for link in (new_person.family_links or []) if link.person_id}
-    other_family_ids = {
-        link.person_id for link in (other_person.family_links or []) if link.person_id
-    }
-    if other_person.id in new_family_ids or new_person.id in other_family_ids:
-        score += 12
-        explicit_link = True
-
-    # Same family name is weaker evidence than explicit family-link.
-    family_points = 0
-    if new_person.family and new_person.family == other_person.family:
-        family_points += 4
-    score += min(CAP_FAMILY, family_points)
+    # Alliance-signal links get a small explicit confidence bump.
+    for link in new_person.family_friends_links or []:
+        if link.person_id == other_person.id and link.alliance_signal:
+            score += 2
+            explicit_link = True
+            break
+    for link in other_person.family_friends_links or []:
+        if link.person_id == new_person.id and link.alliance_signal:
+            score += 2
+            explicit_link = True
+            break
 
     # Inferred evidence by category (all capped).
     score += min(

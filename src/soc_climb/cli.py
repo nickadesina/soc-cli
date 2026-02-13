@@ -33,7 +33,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-persist", action="store_true", help="Skip persisting changes")
     parser.add_argument("--id", dest="person_id", help="Person identifier")
     parser.add_argument("--name", default="", help="Person name")
-    parser.add_argument("--family", default="", help="Family name/group")
     parser.add_argument("--school", action="append", help="School affiliation (repeatable)")
     parser.add_argument("--employer", action="append", help="Employer affiliation (repeatable)")
     parser.add_argument(
@@ -56,11 +55,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--platform", action="append", help="Platform handle in platform=value format")
     parser.add_argument("--ecosystem", action="append", help="Ecosystem label (repeatable)")
-    parser.add_argument("--close-connection", action="append", help="Close connection person id (repeatable)")
     parser.add_argument(
-        "--family-link",
+        "--family-friends-link",
         action="append",
-        help="Family link JSON object with person_id/relationship/alliance_signal",
+        help="Family/friends link JSON object with person_id/relationship/alliance_signal",
     )
     parser.add_argument("--notes", default="", help="Free-form notes")
     parser.add_argument(
@@ -78,7 +76,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--filter-society", help="Filter by society membership key")
     parser.add_argument("--filter-location", help="Filter by location")
     parser.add_argument("--filter-tier", type=int, help="Filter by tier value")
-    parser.add_argument("--filter-family", help="Filter by family")
     parser.add_argument("--filter-name", help="Filter by exact name match")
     return parser
 
@@ -139,7 +136,6 @@ def _handle_add_person(graph: SocGraph, args: argparse.Namespace) -> None:
     person = PersonNode(
         id=args.person_id,
         name=args.name,
-        family=args.family,
         schools=args.school or [],
         employers=args.employer or [],
         societies=_parse_society_rank_map(args.society_rank),
@@ -149,8 +145,10 @@ def _handle_add_person(graph: SocGraph, args: argparse.Namespace) -> None:
         decision_nodes=_parse_json_object_list(args.decision_node, "decision node"),
         platforms=_parse_kv_list(args.platform),
         ecosystems=args.ecosystem or [],
-        close_connections=args.close_connection or [],
-        family_links=_parse_json_object_list(args.family_link, "family link"),
+        family_friends_links=_parse_json_object_list(
+            args.family_friends_link,
+            "family/friends link",
+        ),
         notes=args.notes,
     )
     auto_edges = upsert_person_with_auto_edges(
@@ -244,8 +242,6 @@ def _handle_filter(graph: SocGraph, args: argparse.Namespace) -> None:
         criteria["location"] = args.filter_location
     if args.filter_tier is not None:
         criteria["tier"] = args.filter_tier
-    if args.filter_family:
-        criteria["family"] = args.filter_family
     if args.filter_name:
         criteria["name"] = args.filter_name
     matches = [person.to_dict() for person in graph.filter_people(**criteria)]

@@ -48,13 +48,12 @@ def test_remove_person_drops_incident_edges():
     assert graph.get_edge_weight("c", "b") is None
 
 
-def test_remove_person_also_cleans_close_connections_and_family_links():
+def test_remove_person_also_cleans_family_friends_links():
     graph = SocGraph()
     graph.add_person(
         PersonNode(
             id="a",
-            close_connections=["b", "c"],
-            family_links=[
+            family_friends_links=[
                 {
                     "person_id": "b",
                     "relationship": "sibling",
@@ -67,7 +66,7 @@ def test_remove_person_also_cleans_close_connections_and_family_links():
                 },
                 {
                     "person_id": None,
-                    "relationship": "mentor-family",
+                    "relationship": "mentor",
                     "alliance_signal": True,
                 },
             ],
@@ -76,8 +75,7 @@ def test_remove_person_also_cleans_close_connections_and_family_links():
     graph.add_person(
         PersonNode(
             id="b",
-            close_connections=["a"],
-            family_links=[
+            family_friends_links=[
                 {
                     "person_id": "a",
                     "relationship": "sibling",
@@ -89,11 +87,10 @@ def test_remove_person_also_cleans_close_connections_and_family_links():
     graph.add_person(
         PersonNode(
             id="c",
-            close_connections=["b"],
-            family_links=[
+            family_friends_links=[
                 {
                     "person_id": "b",
-                    "relationship": "friend-family",
+                    "relationship": "friend",
                     "alliance_signal": False,
                 }
             ],
@@ -103,10 +100,8 @@ def test_remove_person_also_cleans_close_connections_and_family_links():
     graph.remove_person("b")
 
     assert "b" not in graph.people
-    assert graph.get_person("a").close_connections == ["c"]
-    assert graph.get_person("c").close_connections == []
-    assert [link.person_id for link in graph.get_person("a").family_links] == ["z", None]
-    assert graph.get_person("c").family_links == []
+    assert [link.person_id for link in graph.get_person("a").family_friends_links] == ["z", None]
+    assert graph.get_person("c").family_friends_links == []
 
 
 def test_remove_connection_drops_both_directions_by_default():

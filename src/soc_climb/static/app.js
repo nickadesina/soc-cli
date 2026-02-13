@@ -22,8 +22,10 @@ const imageDropzone = document.getElementById("image-dropzone");
 const imageFileInput = document.getElementById("image-file-input");
 const imagePreviewWrap = document.getElementById("image-preview-wrap");
 const imagePreview = document.getElementById("image-preview");
+const extractNameInput = document.getElementById("extract-name-input");
 const webSearchToggle = document.getElementById("web-search-toggle");
 const extractImageBtn = document.getElementById("extract-image-btn");
+const cleanFieldsBtn = document.getElementById("clean-fields-btn");
 
 function init() {
   suppressDeprecatedConnectionUi();
@@ -37,9 +39,11 @@ function init() {
   imageDropzone.addEventListener("dragleave", onImageDragLeave);
   imageDropzone.addEventListener("drop", onImageDrop);
   imageDropzone.addEventListener("paste", onImagePaste);
+  document.addEventListener("paste", onGlobalPaste);
   imageDropzone.addEventListener("keydown", onImageDropzoneKeydown);
   imageFileInput.addEventListener("change", onImageFileChosen);
   extractImageBtn.addEventListener("click", onExtractImage);
+  cleanFieldsBtn.addEventListener("click", onCleanFields);
 
   if (!window.cytoscape) {
     showToast("Cytoscape failed to load, so graph rendering is unavailable.", true);
@@ -322,7 +326,6 @@ function buildPersonPayload(form, id) {
   return {
     id,
     name: trimOrEmpty(fieldValue(form, "name")),
-    family: trimOrEmpty(fieldValue(form, "family")),
     schools: parseListField(fieldValue(form, "schools")),
     employers: parseListField(fieldValue(form, "employers")),
     location: trimOrEmpty(fieldValue(form, "location")),
@@ -332,8 +335,10 @@ function buildPersonPayload(form, id) {
     platforms: parseStringMapField(fieldValue(form, "platforms"), "Platforms"),
     societies: parseIntMapField(fieldValue(form, "societies"), "Societies", 1, 5),
     ecosystems: parseListField(fieldValue(form, "ecosystems")),
-    close_connections: parseListField(fieldValue(form, "close_connections")),
-    family_links: parseJsonArrayField(fieldValue(form, "family_links"), "Family Links"),
+    family_friends_links: parseJsonArrayField(
+      fieldValue(form, "family_friends_links"),
+      "Family/Friends Links",
+    ),
     notes: fieldValue(form, "notes").trim(),
   };
 }
@@ -384,15 +389,33 @@ function onImageDrop(event) {
 }
 
 function onImagePaste(event) {
+  const consumed = consumeImageFromClipboardEvent(event);
+  if (consumed) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+}
+
+function onGlobalPaste(event) {
+  // Keep normal text paste behavior intact, but capture image clipboard content
+  // from anywhere on the page.
+  const consumed = consumeImageFromClipboardEvent(event);
+  if (consumed) {
+    event.preventDefault();
+  }
+}
+
+function consumeImageFromClipboardEvent(event) {
   const items = event.clipboardData?.items || [];
   for (const item of items) {
-    if (item.type && item.type.startsWith("image/")) {
-      const file = item.getAsFile();
-      setSelectedImageFile(file);
-      event.preventDefault();
-      return;
+    if (!item.type || !item.type.startsWith("image/")) {
+      continue;
     }
+    const file = item.getAsFile();
+    setSelectedImageFile(file);
+    return true;
   }
+  return false;
 }
 
 function onImageFileChosen(event) {
@@ -419,12 +442,18 @@ function setSelectedImageFile(file) {
 }
 
 async function onExtractImage() {
-  if (!state.selectedImageFile) {
-    showToast("Paste or choose an image first.", true);
+  const nameQuery = extractNameInput ? extractNameInput.value.trim() : "";
+  if (!state.selectedImageFile && !nameQuery) {
+    showToast("Paste/choose an image or enter a name query first.", true);
     return;
   }
   const payload = new FormData();
-  payload.append("image", state.selectedImageFile);
+  if (state.selectedImageFile) {
+    payload.append("image", state.selectedImageFile);
+  }
+  if (nameQuery) {
+    payload.append("name_query", nameQuery);
+  }
   payload.append("web_search", webSearchToggle.checked ? "true" : "false");
   extractImageBtn.disabled = true;
   extractImageBtn.textContent = "Extracting...";
@@ -451,22 +480,75 @@ async function onExtractImage() {
   }
 }
 
+async function onCleanFields() {
+  const payload = {
+    fields: buildCleanFieldsPayload(addPersonForm),
+  };
+  cleanFieldsBtn.disabled = true;
+  cleanFieldsBtn.textContent = "Cleaning...";
+  try {
+    const body = await requestJson("POST", "/api/clean-fields", payload);
+    applyCleanedFields(body?.fields || {});
+    showToast("Fields cleaned. Review before saving.");
+  } catch (error) {
+    showToast(error.message || "Cleaning failed", true);
+  } finally {
+    cleanFieldsBtn.disabled = false;
+    cleanFieldsBtn.textContent = "Clean Fields";
+  }
+}
+
+function buildCleanFieldsPayload(form) {
+  return {
+    id: trimOrNull(fieldValue(form, "id")),
+    name: trimOrNull(fieldValue(form, "name")),
+    schools: parseListField(fieldValue(form, "schools")),
+    employers: parseListField(fieldValue(form, "employers")),
+    location: trimOrNull(fieldValue(form, "location")),
+    tier: numberOrNull(fieldValue(form, "tier")),
+    dependency_weight: numberOrNull(fieldValue(form, "dependency_weight")),
+    decision_nodes: safeParseJsonArrayField(fieldValue(form, "decision_nodes")),
+    platforms: safeParseStringMapField(fieldValue(form, "platforms")),
+    societies: safeParseIntMapField(fieldValue(form, "societies")),
+    ecosystems: parseListField(fieldValue(form, "ecosystems")),
+    family_friends_links: safeParseJsonArrayField(fieldValue(form, "family_friends_links")),
+    notes: trimOrNull(fieldValue(form, "notes")),
+  };
+}
+
 function applyExtractedFields(fields) {
   setFieldIfPresent(addPersonForm, "id", fields.id);
   setFieldIfPresent(addPersonForm, "name", fields.name);
-  setFieldIfPresent(addPersonForm, "family", fields.family);
   setFieldIfPresent(addPersonForm, "location", fields.location);
+  setListFieldIfPresent(addPersonForm, "schools", fields.schools);
+  setListFieldIfPresent(addPersonForm, "employers", fields.employers);
+  setFieldIfPresent(addPersonForm, "notes", fields.notes);
   setFieldIfPresent(addPersonForm, "tier", fields.tier);
   setFieldIfPresent(addPersonForm, "dependency_weight", fields.dependency_weight);
 }
 
+function applyCleanedFields(fields) {
+  setFieldValue(addPersonForm, "id", fields.id);
+  setFieldValue(addPersonForm, "name", fields.name);
+  setFieldValue(addPersonForm, "location", fields.location);
+  setFieldValue(addPersonForm, "tier", fields.tier);
+  setFieldValue(addPersonForm, "dependency_weight", fields.dependency_weight);
+  setListFieldValue(addPersonForm, "schools", fields.schools);
+  setListFieldValue(addPersonForm, "employers", fields.employers);
+  setListFieldValue(addPersonForm, "ecosystems", fields.ecosystems);
+  setMapFieldValue(addPersonForm, "platforms", fields.platforms);
+  setMapFieldValue(addPersonForm, "societies", fields.societies);
+  setJsonFieldValue(addPersonForm, "decision_nodes", fields.decision_nodes);
+  setJsonFieldValue(addPersonForm, "family_friends_links", fields.family_friends_links);
+  setFieldValue(addPersonForm, "notes", fields.notes);
+}
+
 function formatPersonSummary(person) {
   const name = person.name ? `${person.name} (${person.id})` : person.id;
-  const family = person.family || "n/a";
   const location = person.location || "unknown location";
   const tier = person.tier ?? "n/a";
   const dependency = person.dependency_weight ?? "n/a";
-  return `${name} | family: ${family} | location: ${location} | tier: ${tier} | dependency: ${dependency}`;
+  return `${name} | location: ${location} | tier: ${tier} | dependency: ${dependency}`;
 }
 
 function tierClass(tier) {
@@ -479,6 +561,11 @@ function tierClass(tier) {
 
 function trimOrEmpty(value) {
   return value.trim();
+}
+
+function trimOrNull(value) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function numberOrNull(value) {
@@ -535,6 +622,30 @@ function parseIntMapField(value, fieldName, min, max) {
   });
 }
 
+function safeParseJsonArrayField(value) {
+  try {
+    return parseJsonArrayField(value, "JSON Field");
+  } catch (_error) {
+    return [];
+  }
+}
+
+function safeParseStringMapField(value) {
+  try {
+    return parseStringMapField(value, "Map Field");
+  } catch (_error) {
+    return {};
+  }
+}
+
+function safeParseIntMapField(value) {
+  try {
+    return parseIntMapField(value, "Societies", 1, 5);
+  } catch (_error) {
+    return {};
+  }
+}
+
 function parseKeyValueMap(value, fieldName, parseValue) {
   const result = {};
   const lines = value
@@ -577,6 +688,62 @@ function setFieldIfPresent(form, name, value) {
     return;
   }
   field.value = `${value}`;
+}
+
+function setListFieldIfPresent(form, name, values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return;
+  }
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  field.value = values.join(", ");
+}
+
+function setFieldValue(form, name, value) {
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  field.value = value === null || value === undefined ? "" : `${value}`;
+}
+
+function setListFieldValue(form, name, values) {
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  if (!Array.isArray(values) || values.length === 0) {
+    field.value = "";
+    return;
+  }
+  field.value = values.join(", ");
+}
+
+function setMapFieldValue(form, name, values) {
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    field.value = "";
+    return;
+  }
+  const lines = Object.entries(values).map(([key, raw]) => `${key}=${raw}`);
+  field.value = lines.join("\n");
+}
+
+function setJsonFieldValue(form, name, values) {
+  const field = form.elements.namedItem(name);
+  if (!field) {
+    return;
+  }
+  if (!Array.isArray(values) || values.length === 0) {
+    field.value = "[]";
+    return;
+  }
+  field.value = JSON.stringify(values, null, 2);
 }
 
 async function requestJson(method, url, payload = undefined) {

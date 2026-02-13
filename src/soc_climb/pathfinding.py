@@ -137,7 +137,6 @@ def _build_path_result(graph: SocGraph, nodes: Sequence[str]) -> PathResult:
                 tier=person.tier,
                 dependency_weight=person.dependency_weight,
                 metadata={
-                    "family": person.family,
                     "schools": list(person.schools),
                     "employers": list(person.employers),
                     "societies": dict(person.societies),
@@ -145,8 +144,7 @@ def _build_path_result(graph: SocGraph, nodes: Sequence[str]) -> PathResult:
                     "decision_nodes": [node.__dict__ for node in person.decision_nodes],
                     "platforms": dict(person.platforms),
                     "ecosystems": list(person.ecosystems),
-                    "close_connections": list(person.close_connections),
-                    "family_links": [node.__dict__ for node in person.family_links],
+                    "family_friends_links": [node.__dict__ for node in person.family_friends_links],
                     "notes": person.notes,
                 },
             )

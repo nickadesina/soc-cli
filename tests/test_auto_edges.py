@@ -11,7 +11,12 @@ from soc_climb import (
 
 
 def test_edge_distance_value_marks_explicit_ties_as_close() -> None:
-    alice = PersonNode(id="alice", close_connections=["bob"])
+    alice = PersonNode(
+        id="alice",
+        family_friends_links=[
+            {"person_id": "bob", "relationship": "friend", "alliance_signal": True}
+        ],
+    )
     bob = PersonNode(id="bob")
 
     result = edge_distance_value(alice, bob, today=date(2026, 1, 1))
@@ -55,7 +60,9 @@ def test_auto_connect_top_k_keeps_explicit_and_closest_inferred() -> None:
         id="new",
         employers=["e1", "e2"],
         location="nyc",
-        close_connections=["explicit"],
+        family_friends_links=[
+            {"person_id": "explicit", "relationship": "friend", "alliance_signal": True}
+        ],
     )
     graph.add_person(new_person)
     graph.add_person(PersonNode(id="explicit"))
@@ -74,7 +81,12 @@ def test_upsert_person_with_auto_edges_replaces_incident_edges_on_overwrite() ->
     graph.add_person(PersonNode(id="b"))
     upsert_person_with_auto_edges(
         graph,
-        PersonNode(id="a", close_connections=["b"]),
+        PersonNode(
+            id="a",
+            family_friends_links=[
+                {"person_id": "b", "relationship": "friend", "alliance_signal": True}
+            ],
+        ),
         overwrite=True,
         today=date(2026, 1, 1),
     )

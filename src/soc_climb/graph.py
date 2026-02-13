@@ -55,14 +55,9 @@ class SocGraph:
                 self._edge_contexts.pop((source, person_id), None)
 
         for person in self._people.values():
-            person.close_connections = [
-                connection_id
-                for connection_id in person.close_connections
-                if connection_id != person_id
-            ]
-            person.family_links = [
+            person.family_friends_links = [
                 link
-                for link in person.family_links
+                for link in person.family_friends_links
                 if link.person_id != person_id
             ]
 

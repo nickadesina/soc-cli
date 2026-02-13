@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Soc Climb Studio</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260211-websearch-switch" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260213-clean-button" />
   </head>
   <body>
     <div class="app-shell">
@@ -38,10 +38,6 @@
                 <input type="text" name="name" />
               </label>
               <label>
-                Family
-                <input type="text" name="family" />
-              </label>
-              <label>
                 Location
                 <input type="text" name="location" />
               </label>
@@ -64,10 +60,6 @@
               <label>
                 Ecosystems (comma-separated)
                 <input type="text" name="ecosystems" placeholder="fintech, media" />
-              </label>
-              <label>
-                Close Connections (comma-separated IDs)
-                <input type="text" name="close_connections" placeholder="alice_smith, bob_lee" />
               </label>
               <label>
                 Platforms (`key=value`, one per line)
@@ -94,11 +86,11 @@
                 ></textarea>
               </label>
               <label>
-                Family Links (JSON array)
+                Family/Friends Links (JSON array)
                 <textarea
-                  name="family_links"
+                  name="family_friends_links"
                   rows="4"
-                  placeholder='[{"person_id":"jane_doe","relationship":"cousin","alliance_signal":true}]'
+                  placeholder='[{"person_id":"jane_doe","relationship":"friend","alliance_signal":true}]'
                 ></textarea>
               </label>
               <label>
@@ -111,8 +103,16 @@
 
           <section class="card">
             <h2>Extract From Image</h2>
+            <label>
+              Name Query (optional)
+              <input
+                id="extract-name-input"
+                type="text"
+                placeholder="Peter Thiel"
+              />
+            </label>
             <div id="image-dropzone" class="image-dropzone" tabindex="0">
-              Paste (`Ctrl+V`) or drop an image here
+              Paste (`Ctrl+V`) anywhere on page or drop an image here
             </div>
             <label class="file-picker-label">
               Or choose file
@@ -129,6 +129,7 @@
               </span>
             </label>
             <button id="extract-image-btn" class="btn" type="button">Extract Fields</button>
+            <button id="clean-fields-btn" class="btn btn-secondary" type="button">Clean Fields</button>
           </section>
 
           <section class="card">
@@ -156,6 +157,6 @@
 
     <div id="toast" class="toast hidden"></div>
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
-    <script src="/static/app.js?v=20260211-websearch-switch" type="module"></script>
+    <script src="/static/app.js?v=20260213-clean-button" type="module"></script>
   </body>
 </html>

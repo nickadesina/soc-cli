@@ -1,3 +1,4 @@
+import csv
 import json
 from pathlib import Path
 
@@ -14,8 +15,8 @@ from soc_climb import (
 
 
 CSV_HEADER = (
-    "id,name,family,schools,employers,societies,location,tier,dependency_weight,"
-    "decision_nodes,platforms,ecosystems,close_connections,family_links,notes"
+    "id,name,schools,employers,societies,location,tier,dependency_weight,"
+    "decision_nodes,platforms,ecosystems,family_friends_links,notes"
 )
 
 
@@ -66,10 +67,10 @@ def test_load_csv_rejects_non_finite_edge_weight(tmp_path: Path):
         "\n".join(
             [
                 CSV_HEADER,
-                "alice,Alice,,,,,, ,3,, ,,,,",
-                "bob,Bob,,,,,, ,3,, ,,,,",
+                "alice,Alice,,,,,,3,,,,,",
+                "bob,Bob,,,,,,3,,,,,",
             ]
-        ).replace(" ", ""),
+        ),
         encoding="utf-8",
     )
     edges.write_text(
@@ -93,10 +94,10 @@ def test_load_csv_rejects_invalid_context_weight(tmp_path: Path):
         "\n".join(
             [
                 CSV_HEADER,
-                "alice,Alice,,,,,, ,3,, ,,,,",
-                "bob,Bob,,,,,, ,3,, ,,,,",
+                "alice,Alice,,,,,,3,,,,,",
+                "bob,Bob,,,,,,3,,,,,",
             ]
-        ).replace(" ", ""),
+        ),
         encoding="utf-8",
     )
     edges.write_text(
@@ -120,7 +121,7 @@ def test_load_csv_rejects_invalid_dependency_weight(tmp_path: Path):
         "\n".join(
             [
                 CSV_HEADER,
-                "alice,Alice,,,,,,,6,,,,,,",
+                "alice,Alice,,,,,,6,,,,,",
             ]
         ),
         encoding="utf-8",
@@ -138,7 +139,7 @@ def test_load_csv_rejects_invalid_society_rank(tmp_path: Path):
         "\n".join(
             [
                 CSV_HEADER,
-                "alice,Alice,,,,focus=inf,,3,3,,,,,,",
+                "alice,Alice,,,focus=inf,,3,3,,,,,",
             ]
         ),
         encoding="utf-8",
@@ -193,10 +194,10 @@ def test_load_csv_converts_non_integer_legacy_strength_weights(tmp_path: Path):
         "\n".join(
             [
                 CSV_HEADER,
-                "a,Alice,,,,,, ,3,, ,,,,",
-                "b,Bob,,,,,, ,3,, ,,,,",
+                "a,Alice,,,,,,3,,,,,",
+                "b,Bob,,,,,,3,,,,,",
             ]
-        ).replace(" ", ""),
+        ),
         encoding="utf-8",
     )
     edges.write_text(
@@ -211,3 +212,60 @@ def test_load_csv_converts_non_integer_legacy_strength_weights(tmp_path: Path):
 
     loaded = load_graph_csv(nodes, edges)
     assert loaded.get_edge_weight("a", "b") == pytest.approx(1.0)
+
+
+def test_load_csv_migrates_legacy_link_columns_to_family_friends_links(tmp_path: Path):
+    nodes = tmp_path / "nodes.csv"
+    edges = tmp_path / "edges.csv"
+    with nodes.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "id",
+                "name",
+                "family",
+                "schools",
+                "employers",
+                "societies",
+                "location",
+                "tier",
+                "dependency_weight",
+                "decision_nodes",
+                "platforms",
+                "ecosystems",
+                "close_connections",
+                "family_links",
+                "notes",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "id": "alice",
+                "name": "Alice",
+                "tier": "3",
+                "dependency_weight": "3",
+                "close_connections": "bob|carol",
+                "family_links": json.dumps(
+                    [
+                        {
+                            "person_id": "dave",
+                            "relationship": "cousin",
+                            "alliance_signal": True,
+                        }
+                    ]
+                ),
+            }
+        )
+    edges.write_text("source,target,weight,contexts\n", encoding="utf-8")
+
+    loaded = load_graph_csv(nodes, edges)
+    links = sorted(
+        (link.person_id, link.relationship)
+        for link in loaded.get_person("alice").family_friends_links
+    )
+    assert links == [
+        ("bob", "close_connection"),
+        ("carol", "close_connection"),
+        ("dave", "cousin"),
+    ]

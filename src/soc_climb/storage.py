@@ -86,7 +86,6 @@ def save_graph_csv(
             fieldnames=[
                 "id",
                 "name",
-                "family",
                 "schools",
                 "employers",
                 "societies",
@@ -96,8 +95,7 @@ def save_graph_csv(
                 "decision_nodes",
                 "platforms",
                 "ecosystems",
-                "close_connections",
-                "family_links",
+                "family_friends_links",
                 "notes",
             ],
         )
@@ -107,7 +105,6 @@ def save_graph_csv(
                 {
                     "id": person.id,
                     "name": person.name,
-                    "family": person.family,
                     "schools": list_delimiter.join(person.schools),
                     "employers": list_delimiter.join(person.employers),
                     "societies": list_delimiter.join(
@@ -121,8 +118,9 @@ def save_graph_csv(
                         f"{key}{kv_delimiter}{value}" for key, value in person.platforms.items()
                     ),
                     "ecosystems": list_delimiter.join(person.ecosystems),
-                    "close_connections": list_delimiter.join(person.close_connections),
-                    "family_links": json.dumps([link.__dict__ for link in person.family_links]),
+                    "family_friends_links": json.dumps(
+                        [link.__dict__ for link in person.family_friends_links]
+                    ),
                     "notes": person.notes,
                 }
             )
@@ -162,7 +160,6 @@ def load_graph_csv(
                     PersonNode(
                         id=row["id"],
                         name=row.get("name") or "",
-                        family=row.get("family") or "",
                         schools=_split_list(row.get("schools"), list_delimiter),
                         employers=_split_list(row.get("employers"), list_delimiter),
                         societies=_parse_int_map(row.get("societies"), list_delimiter, kv_delimiter),
@@ -174,9 +171,9 @@ def load_graph_csv(
                         decision_nodes=_parse_json_list(row.get("decision_nodes"), field_name="decision_nodes"),
                         platforms=_parse_platforms(row.get("platforms"), list_delimiter, kv_delimiter),
                         ecosystems=_split_list(row.get("ecosystems"), list_delimiter),
-                        close_connections=_split_list(row.get("close_connections"), list_delimiter),
-                        family_links=_parse_json_list(
-                            row.get("family_links"), field_name="family_links"
+                        family_friends_links=_parse_family_friends_links(
+                            row,
+                            list_delimiter=list_delimiter,
                         ),
                         notes=row.get("notes") or "",
                     )
@@ -300,6 +297,28 @@ def _parse_json_list(value: str | None, field_name: str) -> List[dict]:
     if not all(isinstance(item, dict) for item in parsed):
         raise ValueError(f"{field_name} entries must be JSON objects")
     return parsed
+
+
+def _parse_family_friends_links(
+    row: Dict[str, str],
+    *,
+    list_delimiter: str,
+) -> List[dict]:
+    links = _parse_json_list(row.get("family_friends_links"), field_name="family_friends_links")
+    if links:
+        return links
+
+    # Backward compatibility for legacy CSV schema.
+    legacy_links = _parse_json_list(row.get("family_links"), field_name="family_links")
+    for person_id in _split_list(row.get("close_connections"), list_delimiter):
+        legacy_links.append(
+            {
+                "person_id": person_id,
+                "relationship": "close_connection",
+                "alliance_signal": True,
+            }
+        )
+    return legacy_links
 
 
 def _identity_weight(weight: float) -> float:

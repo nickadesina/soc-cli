@@ -5,7 +5,7 @@ from .auto_edges import (
 )
 from .graph import SocGraph
 from .ingestion import EdgeEvent, GraphIngestionService, PersonEvent
-from .models import DecisionNode, FamilyLink, PersonNode
+from .models import DecisionNode, FamilyFriendLink, PersonNode
 from .pathfinding import (
     PathEdge,
     PathNode,
@@ -22,7 +22,7 @@ from .storage import (
 __all__ = [
     "PersonNode",
     "DecisionNode",
-    "FamilyLink",
+    "FamilyFriendLink",
     "SocGraph",
     "edge_distance_value",
     "auto_connect_new_person",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 @dataclass
@@ -18,7 +18,7 @@ class DecisionNode:
 
 
 @dataclass
-class FamilyLink:
+class FamilyFriendLink:
     person_id: str | None
     relationship: str
     alliance_signal: bool  # true if socially or strategically active
@@ -30,7 +30,6 @@ class PersonNode:
 
     id: str
     name: str = ""
-    family: str = ""
     schools: List[str] = field(default_factory=list)
     employers: List[str] = field(default_factory=list)
     location: str = ""
@@ -40,8 +39,7 @@ class PersonNode:
     platforms: Dict[str, str] = field(default_factory=dict)
     societies: Dict[str, int] = field(default_factory=dict)
     ecosystems: List[str] = field(default_factory=list)
-    close_connections: List[str] = field(default_factory=list)
-    family_links: List[FamilyLink] = field(default_factory=list)
+    family_friends_links: List[FamilyFriendLink] = field(default_factory=list)
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -49,9 +47,9 @@ class PersonNode:
             _coerce_decision_node(node)
             for node in self.decision_nodes
         ]
-        self.family_links = [
-            link if isinstance(link, FamilyLink) else FamilyLink(**link)
-            for link in self.family_links
+        self.family_friends_links = [
+            link if isinstance(link, FamilyFriendLink) else FamilyFriendLink(**link)
+            for link in self.family_friends_links
         ]
         if self.tier is not None and not 1 <= self.tier <= 4:
             raise ValueError(f"tier must be between 1 and 4, got {self.tier!r}")
@@ -80,13 +78,31 @@ class PersonNode:
             _coerce_decision_node(node)
             for node in payload.get("decision_nodes", [])
         ]
-        family_links = [
-            link if isinstance(link, FamilyLink) else FamilyLink(**link)
-            for link in payload.get("family_links", [])
-        ]
+        links_payload = payload.get("family_friends_links", [])
+        family_friends_links = _coerce_family_friends_links(links_payload)
+        if not family_friends_links:
+            # Backward compatibility for legacy schema:
+            # - family_links -> family_friends_links
+            # - close_connections -> family_friends_links (relationship="close_connection")
+            legacy_links = payload.get("family_links", [])
+            family_friends_links.extend(_coerce_family_friends_links(legacy_links))
+            for connection_id in payload.get("close_connections", []) or []:
+                if not isinstance(connection_id, str) or not connection_id.strip():
+                    continue
+                family_friends_links.append(
+                    FamilyFriendLink(
+                        person_id=connection_id.strip(),
+                        relationship="close_connection",
+                        alliance_signal=True,
+                    )
+                )
+            family_friends_links = _dedupe_family_friends_links(family_friends_links)
         merged_payload = dict(payload)
         merged_payload["decision_nodes"] = decision_nodes
-        merged_payload["family_links"] = family_links
+        merged_payload.pop("family", None)
+        merged_payload.pop("close_connections", None)
+        merged_payload.pop("family_links", None)
+        merged_payload["family_friends_links"] = family_friends_links
         return cls(**merged_payload)
 
 
@@ -107,3 +123,41 @@ def _coerce_decision_node(node: DecisionNode | Dict[str, object]) -> DecisionNod
     payload = dict(node)
     payload.pop("scope", None)
     return DecisionNode(**payload)
+
+
+def _coerce_family_friends_links(
+    links_payload: List[FamilyFriendLink] | List[Dict[str, object]] | object,
+) -> List[FamilyFriendLink]:
+    if not isinstance(links_payload, list):
+        return []
+    links: List[FamilyFriendLink] = []
+    for raw_link in links_payload:
+        if isinstance(raw_link, FamilyFriendLink):
+            links.append(raw_link)
+            continue
+        if not isinstance(raw_link, dict):
+            continue
+        links.append(FamilyFriendLink(**raw_link))
+    return _dedupe_family_friends_links(links)
+
+
+def _dedupe_family_friends_links(
+    links: List[FamilyFriendLink],
+) -> List[FamilyFriendLink]:
+    deduped: List[FamilyFriendLink] = []
+    seen: set[tuple[str | None, str, bool]] = set()
+    for link in links:
+        relationship = (link.relationship or "").strip()
+        person_id = link.person_id.strip() if isinstance(link.person_id, str) else None
+        dedupe_key = (person_id, relationship, bool(link.alliance_signal))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        deduped.append(
+            FamilyFriendLink(
+                person_id=person_id,
+                relationship=relationship,
+                alliance_signal=bool(link.alliance_signal),
+            )
+        )
+    return deduped

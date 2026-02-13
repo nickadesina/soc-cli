@@ -10,7 +10,6 @@
 - `PersonNode` in `src/soc_climb/models.py` now uses:
   - `id: str`
   - `name: str`
-  - `family: str`
   - `schools: List[str]`
   - `employers: List[str]`
   - `location: str`
@@ -20,12 +19,11 @@
   - `platforms: Dict[str, str]` (descriptive only)
   - `societies: Dict[str, int]` (membership strength rank, `1..5`, `1` strongest)
   - `ecosystems: List[str]`
-  - `close_connections: List[str]`
-  - `family_links: List[FamilyLink]`
+  - `family_friends_links: List[FamilyFriendLink]`
   - `notes: str` (descriptive only)
 - Nested types:
   - `DecisionNode { org, role, start, end }`, where `start/end` are ISO date strings or `None`.
-  - `FamilyLink { person_id, relationship, alliance_signal }`.
+  - `FamilyFriendLink { person_id, relationship, alliance_signal }`.
 - Validation enforced in model:
   - `tier` in `1..4` when present.
   - `dependency_weight` in `1..5`.
@@ -71,7 +69,6 @@ CAP_PLATFORMS = 2
 CAP_LOCATION = 2
 CAP_DECISION = 10
 CAP_SOCIETIES = 8
-CAP_FAMILY = 8
 
 # Explicit tie policy
 EXPLICIT_DISTANCE = 2
@@ -240,29 +237,27 @@ def edge_distance_value(new_person, other_person, *, today: date | None = None) 
     explicit = False
     score = 0
 
-    # Explicit declared ties (dominant)
-    new_close = set(getattr(new_person, "close_connections", []) or [])
-    other_close = set(getattr(other_person, "close_connections", []) or [])
-    if other_person.id in new_close:
+    # Explicit family/friends ties (dominant)
+    new_links = getattr(new_person, "family_friends_links", []) or []
+    other_links = getattr(other_person, "family_friends_links", []) or []
+    new_link_ids = {f.person_id for f in new_links if getattr(f, "person_id", None)}
+    other_link_ids = {f.person_id for f in other_links if getattr(f, "person_id", None)}
+    if other_person.id in new_link_ids:
         score += 12
         explicit = True
-    if new_person.id in other_close:
+    if new_person.id in other_link_ids:
         score += 10
         explicit = True
-
-    new_flinks = getattr(new_person, "family_links", []) or []
-    other_flinks = getattr(other_person, "family_links", []) or []
-    new_family_ids = {f.person_id for f in new_flinks if getattr(f, "person_id", None)}
-    other_family_ids = {f.person_id for f in other_flinks if getattr(f, "person_id", None)}
-    if other_person.id in new_family_ids or new_person.id in other_family_ids:
-        score += 12
-        explicit = True
-
-    # Same family name is weaker evidence than explicit family_link.
-    family_points = 0
-    if getattr(new_person, "family", None) and getattr(new_person, "family", None) == getattr(other_person, "family", None):
-        family_points += 4
-    score += min(CAP_FAMILY, family_points)
+    for link in new_links:
+        if getattr(link, "person_id", None) == other_person.id and getattr(link, "alliance_signal", False):
+            score += 2
+            explicit = True
+            break
+    for link in other_links:
+        if getattr(link, "person_id", None) == new_person.id and getattr(link, "alliance_signal", False):
+            score += 2
+            explicit = True
+            break
 
     # Inferred evidence by category (capped)
     schools = _set_overlap_points(3, set(getattr(new_person, "schools", []) or []), set(getattr(other_person, "schools", []) or []))
@@ -378,8 +373,7 @@ def auto_connect_new_person(
   - `add_person(person, overwrite=False)`
   - `remove_person(person_id)` guarantees:
     - removal of all incident edges and edge contexts
-    - removal of `person_id` from every remaining node's `close_connections`
-    - removal of every remaining `family_links` entry where `family_link.person_id == person_id`
+    - removal of every remaining `family_friends_links` entry where `link.person_id == person_id`
 - Edges:
   - `add_connection(source, target, weight_delta, contexts=None, symmetric=True)`
   - `remove_connection(source, target, symmetric=True)`
@@ -405,8 +399,8 @@ def auto_connect_new_person(
 - CSV:
   - `save_graph_csv` / `load_graph_csv`
   - person columns:
-    - `id,name,family,schools,employers,societies,location,tier,dependency_weight,decision_nodes,platforms,ecosystems,close_connections,family_links,notes`
-  - `decision_nodes` and `family_links` are JSON-encoded lists in cells.
+    - `id,name,schools,employers,societies,location,tier,dependency_weight,decision_nodes,platforms,ecosystems,family_friends_links,notes`
+  - `decision_nodes` and `family_friends_links` are JSON-encoded lists in cells.
   - `societies` encoding is explicit key/value rank pairs:
     - default list delimiter: `|`
     - default key/value delimiter: `=`
@@ -443,13 +437,13 @@ Supported commands:
 - `filter`
 
 Selected add-person options:
-- `--id`, `--name`, `--family`, `--school`, `--employer`, `--location`
+- `--id`, `--name`, `--school`, `--employer`, `--location`
 - `--tier`, `--dependency-weight`
 - `--society-rank key=rank`
 - `--decision-node '{...json...}'`
 - `--platform key=value`
-- `--ecosystem`, `--close-connection`
-- `--family-link '{...json...}'`
+- `--ecosystem`
+- `--family-friends-link '{...json...}'`
 - `--notes`
 
 Persistence flags:
@@ -459,7 +453,7 @@ Persistence flags:
 ## Web API (`src/soc_climb/web.py`)
 - `GET /api/graph`
 - `POST /api/people`
-- `POST /api/extract-person` (multipart image upload; extracts person form fields via OpenAI vision model)
+- `POST /api/extract-person` (accepts image upload and/or `name_query`; extracts person form fields with optional web search enrichment)
 - `DELETE /api/people/{person_id}`
 - `POST /api/connections` (deprecated; returns HTTP `410 Gone` while manual add-connection is disabled)
 - `DELETE /api/connections` (deprecated; returns HTTP `410 Gone` while manual delete-connection is disabled)
@@ -468,9 +462,13 @@ Persistence flags:
 Notes:
 - People endpoint now validates `tier`, `dependency_weight`, and `societies` ranks.
 - Quality endpoints were removed as part of schema migration.
-- `POST /api/extract-person` accepts a `web_search` form flag (default `false`):
-  - `false`: image-only extraction path.
-  - `true`: extraction path with OpenAI web search tool enabled.
+- `POST /api/extract-person` accepts:
+  - `image` (optional image upload)
+  - `name_query` (optional string, e.g. `Peter Thiel`)
+  - `web_search` form flag (default `false`)
+- Extraction behavior:
+  - if `web_search=false`: returns image-only (or name-only fallback if no image)
+  - if `web_search=true`: uses web search enrichment and name-based retry when needed
 - Manual add/delete connection flows are currently deprecated and disabled; these endpoints may be reopened in a future update.
 
 ## Run Web App
@@ -503,6 +501,8 @@ py -3.12 -m uvicorn soc_climb.web:app --reload --app-dir src
     - tier `4` = green
   - add/update person (current schema subset)
   - paste/drop/select image and extract visible person fields into add-person form
+  - page-level paste support for images (not only dropzone-focused paste)
+  - optional name query field in extract panel for direct web-search extraction
   - `Web Search` toggle in extract panel is off by default
   - extracted values populate standard editable form fields; user can modify before save
   - add/delete connection controls are currently deprecated/disabled in the UI and may be reopened later
@@ -522,7 +522,7 @@ py -3.12 -m uvicorn soc_climb.web:app --reload --app-dir src
   - `tests/test_cli.py`
   - `tests/test_ingestion.py`
 - Includes explicit tests that:
-  - `remove_person` cleans dangling `close_connections` and `family_links` references
+  - `remove_person` cleans dangling `family_friends_links` references
   - `tier` / `dependency_weight` do not influence pathfinding cost
 
 Run:
