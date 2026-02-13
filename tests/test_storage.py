@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -146,3 +147,67 @@ def test_load_csv_rejects_invalid_society_rank(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid int for map\\[focus\\]"):
         load_graph_csv(nodes, edges)
+
+
+def test_load_json_converts_legacy_strength_weights_when_marker_missing(tmp_path: Path):
+    target = tmp_path / "graph.json"
+    target.write_text(
+        json.dumps(
+            {
+                "people": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+                "edges": [
+                    {"source": "a", "target": "b", "weight": 9},
+                    {"source": "a", "target": "c", "weight": 3},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_graph_json(target)
+    assert loaded.get_edge_weight("a", "b") == pytest.approx(1.0)
+    assert loaded.get_edge_weight("a", "c") == pytest.approx(8.0)
+
+
+def test_load_json_preserves_distance_weights_when_marker_present(tmp_path: Path):
+    target = tmp_path / "graph.json"
+    target.write_text(
+        json.dumps(
+            {
+                "edge_weight_model": "distance_v2",
+                "people": [{"id": "a"}, {"id": "b"}],
+                "edges": [{"source": "a", "target": "b", "weight": 7}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_graph_json(target)
+    assert loaded.get_edge_weight("a", "b") == pytest.approx(7.0)
+
+
+def test_load_csv_converts_non_integer_legacy_strength_weights(tmp_path: Path):
+    nodes = tmp_path / "nodes.csv"
+    edges = tmp_path / "edges.csv"
+    nodes.write_text(
+        "\n".join(
+            [
+                CSV_HEADER,
+                "a,Alice,,,,,, ,3,, ,,,,",
+                "b,Bob,,,,,, ,3,, ,,,,",
+            ]
+        ).replace(" ", ""),
+        encoding="utf-8",
+    )
+    edges.write_text(
+        "\n".join(
+            [
+                "source,target,weight,contexts",
+                "a,b,2.5,",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_graph_csv(nodes, edges)
+    assert loaded.get_edge_weight("a", "b") == pytest.approx(1.0)

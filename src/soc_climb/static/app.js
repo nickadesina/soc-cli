@@ -11,15 +11,12 @@ const state = {
 const graphContainer = document.getElementById("graph");
 const edgeDetails = document.getElementById("edge-details");
 const edgeSummary = document.getElementById("edge-summary");
-const deleteEdgeBtn = document.getElementById("delete-edge-btn");
 const refreshBtn = document.getElementById("refresh-btn");
 const addPersonForm = document.getElementById("add-person-form");
-const addConnectionForm = document.getElementById("add-connection-form");
 const personDetailsEmpty = document.getElementById("person-details-empty");
 const personDetailsContent = document.getElementById("person-details-content");
 const personSummary = document.getElementById("person-summary");
 const deletePersonBtn = document.getElementById("delete-person-btn");
-const personIdOptions = document.getElementById("person-id-options");
 const toast = document.getElementById("toast");
 const imageDropzone = document.getElementById("image-dropzone");
 const imageFileInput = document.getElementById("image-file-input");
@@ -29,10 +26,9 @@ const webSearchToggle = document.getElementById("web-search-toggle");
 const extractImageBtn = document.getElementById("extract-image-btn");
 
 function init() {
+  suppressDeprecatedConnectionUi();
   addPersonForm.addEventListener("submit", onSubmitPerson);
-  addConnectionForm.addEventListener("submit", onSubmitConnection);
   deletePersonBtn.addEventListener("click", onDeletePerson);
-  deleteEdgeBtn.addEventListener("click", onDeleteEdge);
   refreshBtn.addEventListener("click", () => {
     refreshGraph();
   });
@@ -53,6 +49,32 @@ function init() {
   refreshGraph();
 }
 
+function suppressDeprecatedConnectionUi() {
+  const addConnectionForm = document.getElementById("add-connection-form");
+  if (addConnectionForm) {
+    const section = addConnectionForm.closest("section");
+    if (section) {
+      section.remove();
+    } else {
+      addConnectionForm.remove();
+    }
+  }
+
+  for (const heading of document.querySelectorAll("h2")) {
+    if ((heading.textContent || "").trim().toLowerCase() === "add connection") {
+      const section = heading.closest("section");
+      if (section) {
+        section.remove();
+      }
+    }
+  }
+
+  const deleteEdgeBtn = document.getElementById("delete-edge-btn");
+  if (deleteEdgeBtn) {
+    deleteEdgeBtn.remove();
+  }
+}
+
 function initGraph() {
   state.cy = window.cytoscape({
     container: graphContainer,
@@ -70,9 +92,6 @@ function initGraph() {
           color: "#ffffff",
           "text-outline-color": "#0f766e",
           "text-outline-width": 1,
-          "shadow-color": "#0f766e",
-          "shadow-blur": 12,
-          "shadow-opacity": 0.85,
           width: 48,
           height: 48,
         },
@@ -82,7 +101,6 @@ function initGraph() {
         style: {
           "background-color": "#ff1744",
           "text-outline-color": "#ff1744",
-          "shadow-color": "#ff1744",
         },
       },
       {
@@ -90,7 +108,6 @@ function initGraph() {
         style: {
           "background-color": "#ff9100",
           "text-outline-color": "#ff9100",
-          "shadow-color": "#ff9100",
         },
       },
       {
@@ -99,7 +116,6 @@ function initGraph() {
           "background-color": "#ffea00",
           color: "#161616",
           "text-outline-color": "#ffea00",
-          "shadow-color": "#ffea00",
         },
       },
       {
@@ -108,7 +124,6 @@ function initGraph() {
           "background-color": "#00e676",
           color: "#0a1f16",
           "text-outline-color": "#00e676",
-          "shadow-color": "#00e676",
         },
       },
       {
@@ -128,7 +143,7 @@ function initGraph() {
         },
       },
       {
-        selector: "edge[symmetric = false]",
+        selector: "edge.directed",
         style: {
           "target-arrow-shape": "triangle",
           "target-arrow-color": "#2f6f63",
@@ -176,7 +191,6 @@ async function refreshGraph() {
     renderGraph();
     renderSelectedPerson();
     renderSelectedEdge();
-    renderPersonIdOptions();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -205,6 +219,7 @@ function renderGraph() {
       symmetric: edge.symmetric,
       contexts: edge.contexts,
     },
+    classes: edge.symmetric ? "" : "directed",
   }));
 
   state.cy.elements().remove();
@@ -241,15 +256,6 @@ function renderGraph() {
     } else {
       state.selectedEdge = null;
     }
-  }
-}
-
-function renderPersonIdOptions() {
-  personIdOptions.replaceChildren();
-  for (const person of state.graph.people) {
-    const option = document.createElement("option");
-    option.value = person.id;
-    personIdOptions.append(option);
   }
 }
 
@@ -292,23 +298,13 @@ async function onSubmitPerson(event) {
     return;
   }
 
-  const payload = {
-    id,
-    name: trimOrEmpty(fieldValue(form, "name")),
-    family: trimOrEmpty(fieldValue(form, "family")),
-    location: trimOrEmpty(fieldValue(form, "location")),
-    tier: numberOrNull(fieldValue(form, "tier")),
-    dependency_weight: numberOrDefault(fieldValue(form, "dependency_weight"), 3),
-    schools: [],
-    employers: [],
-    societies: {},
-    decision_nodes: [],
-    platforms: {},
-    ecosystems: [],
-    close_connections: [],
-    family_links: [],
-    notes: "",
-  };
+  let payload;
+  try {
+    payload = buildPersonPayload(form, id);
+  } catch (error) {
+    showToast(error.message || "Invalid person form values.", true);
+    return;
+  }
 
   try {
     await requestJson("POST", "/api/people", payload);
@@ -322,50 +318,24 @@ async function onSubmitPerson(event) {
   }
 }
 
-async function onSubmitConnection(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const source = fieldValue(form, "source").trim();
-  const target = fieldValue(form, "target").trim();
-  const weight = numberOrNull(fieldValue(form, "weight"));
-
-  if (!source || !target) {
-    showToast("Source and target are required.", true);
-    return;
-  }
-  if (weight === null || weight <= 0) {
-    showToast("Weight must be a positive number.", true);
-    return;
-  }
-
-  const contextName = fieldValue(form, "context_name").trim();
-  const contextValue = numberOrNull(fieldValue(form, "context_value"));
-  const contexts = {};
-  if (contextName) {
-    if (contextValue === null) {
-      showToast("Context value is required when context name is set.", true);
-      return;
-    }
-    contexts[contextName] = contextValue;
-  }
-
-  const payload = {
-    source,
-    target,
-    weight,
-    contexts,
-    symmetric: fieldChecked(form, "symmetric"),
+function buildPersonPayload(form, id) {
+  return {
+    id,
+    name: trimOrEmpty(fieldValue(form, "name")),
+    family: trimOrEmpty(fieldValue(form, "family")),
+    schools: parseListField(fieldValue(form, "schools")),
+    employers: parseListField(fieldValue(form, "employers")),
+    location: trimOrEmpty(fieldValue(form, "location")),
+    tier: numberOrNull(fieldValue(form, "tier")),
+    dependency_weight: numberOrDefault(fieldValue(form, "dependency_weight"), 3),
+    decision_nodes: parseJsonArrayField(fieldValue(form, "decision_nodes"), "Decision Nodes"),
+    platforms: parseStringMapField(fieldValue(form, "platforms"), "Platforms"),
+    societies: parseIntMapField(fieldValue(form, "societies"), "Societies", 1, 5),
+    ecosystems: parseListField(fieldValue(form, "ecosystems")),
+    close_connections: parseListField(fieldValue(form, "close_connections")),
+    family_links: parseJsonArrayField(fieldValue(form, "family_links"), "Family Links"),
+    notes: fieldValue(form, "notes").trim(),
   };
-
-  try {
-    await requestJson("POST", "/api/connections", payload);
-    form.reset();
-    setFieldChecked(form, "symmetric", true);
-    showToast(`Added connection ${source} -> ${target}.`);
-    await refreshGraph();
-  } catch (error) {
-    showToast(error.message, true);
-  }
 }
 
 async function onDeletePerson() {
@@ -383,36 +353,6 @@ async function onDeletePerson() {
     await requestJson("DELETE", `/api/people/${encodeURIComponent(personId)}`);
     state.selectedNodeId = null;
     showToast(`Deleted ${personId}.`);
-    await refreshGraph();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function onDeleteEdge() {
-  if (!state.selectedEdge) {
-    showToast("Select an edge first.", true);
-    return;
-  }
-  const edge = state.selectedEdge;
-  const direction = edge.symmetric ? "symmetric" : "directed";
-  const confirmed = window.confirm(
-    `Delete ${direction} connection ${edge.source} -> ${edge.target}?`
-  );
-  if (!confirmed) {
-    return;
-  }
-
-  const query = new URLSearchParams({
-    source: edge.source,
-    target: edge.target,
-    symmetric: edge.symmetric ? "true" : "false",
-  });
-  try {
-    await requestJson("DELETE", `/api/connections?${query.toString()}`);
-    state.selectedEdge = null;
-    edgeDetails.classList.add("hidden");
-    showToast("Connection deleted.");
     await refreshGraph();
   } catch (error) {
     showToast(error.message, true);
@@ -498,7 +438,11 @@ async function onExtractImage() {
       throw new Error(body?.detail || "Extraction failed");
     }
     applyExtractedFields(body?.fields || {});
-    showToast("Fields extracted. Review before saving.");
+    if (body?.web_search_fallback && body?.warning) {
+      showToast(`${body.warning} Review before saving.`);
+    } else {
+      showToast("Fields extracted. Review before saving.");
+    }
   } catch (error) {
     showToast(error.message || "Extraction failed", true);
   } finally {
@@ -550,24 +494,78 @@ function numberOrDefault(value, fallback) {
   return parsed === null ? fallback : parsed;
 }
 
+function parseListField(value) {
+  return value
+    .split(/[,\r\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function parseJsonArrayField(value, fieldName) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (_error) {
+    throw new Error(`${fieldName} must be valid JSON.`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${fieldName} must be a JSON array.`);
+  }
+  return parsed;
+}
+
+function parseStringMapField(value, fieldName) {
+  return parseKeyValueMap(value, fieldName, (rawValue) => rawValue);
+}
+
+function parseIntMapField(value, fieldName, min, max) {
+  return parseKeyValueMap(value, fieldName, (rawValue, key) => {
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed)) {
+      throw new Error(`${fieldName} entry '${key}' must be an integer.`);
+    }
+    if (parsed < min || parsed > max) {
+      throw new Error(`${fieldName} entry '${key}' must be between ${min} and ${max}.`);
+    }
+    return parsed;
+  });
+}
+
+function parseKeyValueMap(value, fieldName, parseValue) {
+  const result = {};
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      throw new Error(`${fieldName} entries must use key=value format.`);
+    }
+    const key = line.slice(0, separatorIndex).trim();
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    if (!key) {
+      throw new Error(`${fieldName} entries must include a key.`);
+    }
+    if (!rawValue) {
+      throw new Error(`${fieldName} entry '${key}' must include a value.`);
+    }
+    result[key] = parseValue(rawValue, key);
+  }
+  return result;
+}
+
 function fieldValue(form, name) {
   const field = form.elements.namedItem(name);
   if (!field) {
     return "";
   }
   return field.value ?? "";
-}
-
-function fieldChecked(form, name) {
-  const field = form.elements.namedItem(name);
-  return Boolean(field && field.checked);
-}
-
-function setFieldChecked(form, name, checked) {
-  const field = form.elements.namedItem(name);
-  if (field) {
-    field.checked = checked;
-  }
 }
 
 function setFieldIfPresent(form, name, value) {

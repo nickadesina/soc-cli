@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: soc-climb
+Version: 0.1.0
+Summary: Lightweight social graph toolkit
+Requires-Python: >=3.10
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Provides-Extra: web
+Requires-Dist: fastapi>=0.110; extra == "web"
+Requires-Dist: uvicorn>=0.30; extra == "web"
+Requires-Dist: python-multipart>=0.0.9; extra == "web"

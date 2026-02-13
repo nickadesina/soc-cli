@@ -5,7 +5,6 @@ import json
 import os
 import urllib.error
 import urllib.request
-from math import isfinite
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -14,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .auto_edges import upsert_person_with_auto_edges
 from .graph import SocGraph
 from .models import DecisionNode, FamilyLink, PersonNode
 from .pathfinding import dijkstra_shortest_path
@@ -51,14 +51,6 @@ class PersonPayload(BaseModel):
     notes: str = ""
 
 
-class ConnectionPayload(BaseModel):
-    source: str
-    target: str
-    weight: float
-    contexts: Dict[str, float] = Field(default_factory=dict)
-    symmetric: bool = True
-
-
 def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
     app = FastAPI(title="Soc Climb Web")
     data_path = Path(snapshot_path)
@@ -73,7 +65,10 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(
+            static_dir / "index.html",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
 
     @app.get("/api/graph")
     def get_graph() -> Dict[str, object]:
@@ -107,9 +102,18 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
             family_links=[FamilyLink(**node.model_dump()) for node in payload.family_links],
             notes=payload.notes,
         )
-        graph.add_person(person, overwrite=True)
+        auto_edges = upsert_person_with_auto_edges(
+            graph,
+            person,
+            overwrite=True,
+            top_k=None,
+        )
         _persist()
-        return {"status": "ok", "person": person.to_dict()}
+        return {
+            "status": "ok",
+            "person": person.to_dict(),
+            "auto_edges": auto_edges,
+        }
 
     @app.post("/api/extract-person")
     async def extract_person(
@@ -123,14 +127,8 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
             raise HTTPException(status_code=400, detail="image cannot be empty")
         if len(image_bytes) > 8 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="image must be <= 8MB")
-        if web_search:
-            extracted = _extract_person_fields_from_image_with_web_search(
-                image_bytes,
-                image.content_type,
-            )
-        else:
-            extracted = _extract_person_fields_from_image(image_bytes, image.content_type)
-        return {"status": "ok", "fields": extracted}
+        extracted_payload = _extract_person_fields(image_bytes, image.content_type, web_search)
+        return {"status": "ok", **extracted_payload}
 
     @app.delete("/api/people/{person_id}")
     def delete_person(person_id: str) -> Dict[str, object]:
@@ -141,35 +139,25 @@ def create_app(snapshot_path: str | Path = "data/graph.json") -> FastAPI:
         _persist()
         return {"status": "ok", "person_id": person_id}
 
-    @app.post("/api/connections")
-    def add_connection(payload: ConnectionPayload) -> Dict[str, object]:
-        _ensure_finite(payload.weight, "weight")
-        _ensure_finite_map(payload.contexts, "context")
-        try:
-            graph.add_connection(
-                payload.source,
-                payload.target,
-                payload.weight,
-                contexts=payload.contexts,
-                symmetric=payload.symmetric,
-            )
-        except (KeyError, ValueError) as exc:
-            _raise_graph_error(exc)
-        _persist()
-        return {"status": "ok"}
+    @app.post("/api/connections", deprecated=True)
+    def add_connection() -> Dict[str, object]:
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Manual connection creation is deprecated and currently disabled. "
+                "This flow may be reopened in a future update."
+            ),
+        )
 
-    @app.delete("/api/connections")
-    def delete_connection(
-        source: str = Query(...),
-        target: str = Query(...),
-        symmetric: bool = Query(True),
-    ) -> Dict[str, object]:
-        try:
-            graph.remove_connection(source, target, symmetric=symmetric)
-        except KeyError as exc:
-            _raise_graph_error(exc)
-        _persist()
-        return {"status": "ok"}
+    @app.delete("/api/connections", deprecated=True)
+    def delete_connection() -> Dict[str, object]:
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Manual connection deletion is deprecated and currently disabled. "
+                "This flow may be reopened in a future update."
+            ),
+        )
 
     @app.get("/api/path")
     def shortest_path(
@@ -236,17 +224,6 @@ def _ensure_non_empty(value: str, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"{field_name} cannot be empty")
 
 
-def _ensure_finite(value: float, field_name: str) -> None:
-    if not isfinite(value):
-        raise HTTPException(status_code=400, detail=f"{field_name} must be finite")
-
-
-def _ensure_finite_map(values: Dict[str, float], field_prefix: str) -> None:
-    for key, value in values.items():
-        if not isfinite(value):
-            raise HTTPException(status_code=400, detail=f"{field_prefix}[{key}] must be finite")
-
-
 def _ensure_int_rank_map(values: Dict[str, int], field_name: str) -> None:
     for key, value in values.items():
         if not isinstance(value, int):
@@ -266,7 +243,7 @@ def _raise_graph_error(exc: Exception) -> None:
 
 
 def _extract_person_fields_from_image(image_bytes: bytes, image_mime: str) -> Dict[str, object]:
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = _get_openai_api_key()
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
 
@@ -336,11 +313,40 @@ def _extract_person_fields_from_image(image_bytes: bytes, image_mime: str) -> Di
     return _normalise_extracted_fields(extracted)
 
 
+def _extract_person_fields(
+    image_bytes: bytes,
+    image_mime: str,
+    web_search: bool,
+) -> Dict[str, object]:
+    if not web_search:
+        extracted = _extract_person_fields_from_image(image_bytes, image_mime)
+        return {"fields": extracted, "web_search_used": False}
+
+    try:
+        extracted = _extract_person_fields_from_image_with_web_search(image_bytes, image_mime)
+        return {"fields": extracted, "web_search_used": True}
+    except HTTPException as exc:
+        # Web-search calls are more failure-prone (tool/network/policy availability).
+        # Fall back to image-only extraction so the user can still continue.
+        if exc.status_code not in {500, 502}:
+            raise
+        extracted = _extract_person_fields_from_image(image_bytes, image_mime)
+        return {
+            "fields": extracted,
+            "web_search_used": False,
+            "web_search_fallback": True,
+            "warning": (
+                "Web search extraction is temporarily unavailable. "
+                "Used image-only extraction instead."
+            ),
+        }
+
+
 def _extract_person_fields_from_image_with_web_search(
     image_bytes: bytes,
     image_mime: str,
 ) -> Dict[str, object]:
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    api_key = _get_openai_api_key()
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured")
 
@@ -462,6 +468,26 @@ def _clean_optional_string(value: object) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _get_openai_api_key() -> str:
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return ""
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        if name.strip() != "OPENAI_API_KEY":
+            continue
+        parsed = value.strip().strip("'").strip('"')
+        if parsed:
+            return parsed
+    return ""
 
 
 app = create_app()

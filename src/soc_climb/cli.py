@@ -6,6 +6,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Dict, Optional
 
+from .auto_edges import upsert_person_with_auto_edges
 from .graph import SocGraph
 from .models import PersonNode
 from .pathfinding import dijkstra_shortest_path
@@ -62,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Family link JSON object with person_id/relationship/alliance_signal",
     )
     parser.add_argument("--notes", default="", help="Free-form notes")
+    parser.add_argument(
+        "--auto-top-k",
+        type=int,
+        help="Optional cap for inferred auto-edges during add-person",
+    )
     parser.add_argument("--source", help="Source node id for edges and path queries")
     parser.add_argument("--target", help="Target node id for edges and path queries")
     parser.add_argument("--weight", type=float, help="Weight delta for connections")
@@ -147,8 +153,22 @@ def _handle_add_person(graph: SocGraph, args: argparse.Namespace) -> None:
         family_links=_parse_json_object_list(args.family_link, "family link"),
         notes=args.notes,
     )
-    graph.add_person(person, overwrite=True)
-    print(json.dumps({"status": "ok", "person": person.to_dict()}, indent=2))
+    auto_edges = upsert_person_with_auto_edges(
+        graph,
+        person,
+        overwrite=True,
+        top_k=args.auto_top_k,
+    )
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "person": person.to_dict(),
+                "auto_edges": auto_edges,
+            },
+            indent=2,
+        )
+    )
 
 
 def _handle_remove_person(graph: SocGraph, args: argparse.Namespace) -> None:

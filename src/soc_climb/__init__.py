@@ -1,3 +1,8 @@
+from .auto_edges import (
+    auto_connect_new_person,
+    edge_distance_value,
+    upsert_person_with_auto_edges,
+)
 from .graph import SocGraph
 from .ingestion import EdgeEvent, GraphIngestionService, PersonEvent
 from .models import DecisionNode, FamilyLink, PersonNode
@@ -19,6 +24,9 @@ __all__ = [
     "DecisionNode",
     "FamilyLink",
     "SocGraph",
+    "edge_distance_value",
+    "auto_connect_new_person",
+    "upsert_person_with_auto_edges",
     "PathNode",
     "PathEdge",
     "PathResult",

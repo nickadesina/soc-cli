@@ -69,6 +69,21 @@ class SocGraph:
         # Edge removals can change the max tie strength.
         self._max_weight_stale = True
 
+    def clear_incident_edges(self, person_id: str) -> None:
+        """Remove all incoming/outgoing edges for an existing person."""
+
+        self.ensure_person(person_id)
+
+        outgoing_targets = list(self._adjacency.get(person_id, {}).keys())
+        for target in outgoing_targets:
+            self._remove_edge(person_id, target)
+
+        for source, neighbors in self._adjacency.items():
+            if source == person_id:
+                continue
+            if person_id in neighbors:
+                self._remove_edge(source, person_id)
+
     def ensure_person(self, person_id: str) -> None:
         if person_id not in self._people:
             raise KeyError(f"Unknown person id: {person_id}")

@@ -20,12 +20,12 @@ def sample_graph() -> SocGraph:
     return graph
 
 
-def test_dijkstra_shortest_path_prefers_strong_edges(sample_graph: SocGraph):
+def test_dijkstra_shortest_path_prefers_lower_distances(sample_graph: SocGraph):
     result = dijkstra_shortest_path(sample_graph, "a", "d")
     assert result is not None
-    assert result.node_ids == ["a", "b", "d"]
-    assert result.total_strength == pytest.approx(7.0)
-    assert result.total_cost == pytest.approx(0.7)
+    assert result.node_ids == ["a", "c", "d"]
+    assert result.total_strength == pytest.approx(5.0)
+    assert result.total_cost == pytest.approx(5.0)
 
 
 def test_dijkstra_returns_none_when_unreachable(sample_graph: SocGraph):
@@ -47,5 +47,5 @@ def test_dijkstra_ignores_tier_and_dependency_weight_for_cost():
 
     result = dijkstra_shortest_path(graph, "start", "goal")
     assert result is not None
-    assert result.node_ids == ["start", "stronger", "goal"]
-    assert result.total_cost == pytest.approx(1.0)
+    assert result.node_ids == ["start", "weaker", "goal"]
+    assert result.total_cost == pytest.approx(3.6)

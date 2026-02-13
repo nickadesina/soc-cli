@@ -58,7 +58,7 @@ def dijkstra_shortest_path(
     start: str,
     goal: str,
 ) -> Optional[PathResult]:
-    """Weighted shortest path where stronger ties are cheaper to traverse.
+    """Weighted shortest path where lower edge distances are cheaper to traverse.
 
     Person metadata (for example tier/dependency_weight) is descriptive-only
     and does not change traversal cost.
@@ -101,7 +101,7 @@ def dijkstra_shortest_path(
 def _edge_cost(weight: float) -> float:
     if not isfinite(weight) or weight <= 0:
         return inf
-    return 1.0 / weight
+    return float(weight)
 
 
 def _build_path_result(graph: SocGraph, nodes: Sequence[str]) -> PathResult:

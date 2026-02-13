@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Soc Climb Studio</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260211-websearch-switch" />
   </head>
   <body>
     <div class="app-shell">
@@ -22,7 +22,6 @@
           <div id="edge-details" class="edge-details hidden">
             <h3>Selected Edge</h3>
             <p id="edge-summary"></p>
-            <button id="delete-edge-btn" class="btn btn-danger">Delete Connection</button>
           </div>
         </section>
 
@@ -54,6 +53,58 @@
                 Dependency Weight (1-5)
                 <input type="number" name="dependency_weight" min="1" max="5" value="3" />
               </label>
+              <label>
+                Schools (comma-separated)
+                <input type="text" name="schools" placeholder="Harvard, MIT" />
+              </label>
+              <label>
+                Employers (comma-separated)
+                <input type="text" name="employers" placeholder="Acme Corp, Beta Ventures" />
+              </label>
+              <label>
+                Ecosystems (comma-separated)
+                <input type="text" name="ecosystems" placeholder="fintech, media" />
+              </label>
+              <label>
+                Close Connections (comma-separated IDs)
+                <input type="text" name="close_connections" placeholder="alice_smith, bob_lee" />
+              </label>
+              <label>
+                Platforms (`key=value`, one per line)
+                <textarea
+                  name="platforms"
+                  rows="3"
+                  placeholder="x=@example&#10;linkedin=example"
+                ></textarea>
+              </label>
+              <label>
+                Societies (`key=rank`, one per line, rank 1-5)
+                <textarea
+                  name="societies"
+                  rows="3"
+                  placeholder="ivy_club=1&#10;book_society=3"
+                ></textarea>
+              </label>
+              <label>
+                Decision Nodes (JSON array)
+                <textarea
+                  name="decision_nodes"
+                  rows="5"
+                  placeholder='[{"org":"Acme","role":"Board Member","start":"2020-01-01","end":null}]'
+                ></textarea>
+              </label>
+              <label>
+                Family Links (JSON array)
+                <textarea
+                  name="family_links"
+                  rows="4"
+                  placeholder='[{"person_id":"jane_doe","relationship":"cousin","alliance_signal":true}]'
+                ></textarea>
+              </label>
+              <label>
+                Notes
+                <textarea name="notes" rows="4" placeholder="Freeform notes"></textarea>
+              </label>
               <button type="submit" class="btn">Save Person</button>
             </form>
           </section>
@@ -70,43 +121,23 @@
             <div id="image-preview-wrap" class="image-preview-wrap hidden">
               <img id="image-preview" alt="Pasted preview" />
             </div>
-            <label class="inline-check">
-              <input id="web-search-toggle" type="checkbox" />
-              Web Search
+            <label class="switch-row">
+              <span class="switch-label">Web Search</span>
+              <span class="switch-control">
+                <input id="web-search-toggle" type="checkbox" />
+                <span class="switch-slider" aria-hidden="true"></span>
+              </span>
             </label>
             <button id="extract-image-btn" class="btn" type="button">Extract Fields</button>
           </section>
 
           <section class="card">
-            <h2>Add Connection</h2>
-            <form id="add-connection-form" class="stack-form">
-              <label>
-                Source
-                <input type="text" name="source" list="person-id-options" required />
-              </label>
-              <label>
-                Target
-                <input type="text" name="target" list="person-id-options" required />
-              </label>
-              <label>
-                Weight
-                <input type="number" name="weight" step="0.1" min="0.1" required />
-              </label>
-              <label>
-                Context Name
-                <input type="text" name="context_name" placeholder="school / intro / coworker" />
-              </label>
-              <label>
-                Context Value
-                <input type="number" name="context_value" step="0.1" />
-              </label>
-              <label class="inline-check">
-                <input type="checkbox" name="symmetric" checked />
-                Symmetric (two-way tie)
-              </label>
-              <button type="submit" class="btn">Add Connection</button>
-            </form>
-            <datalist id="person-id-options"></datalist>
+            <h2>Notes</h2>
+            <p>
+              Manual Add/Delete Connection is currently deprecated and disabled. We may reopen it
+              in a future update.
+            </p>
+            <p>For now, adding people is expected to auto-populate and auto-connect the graph.</p>
           </section>
 
           <section class="card" id="person-details-card">
@@ -125,6 +156,6 @@
 
     <div id="toast" class="toast hidden"></div>
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
-    <script src="/static/app.js" type="module"></script>
+    <script src="/static/app.js?v=20260211-websearch-switch" type="module"></script>
   </body>
 </html>

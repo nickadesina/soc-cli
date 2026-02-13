@@ -4,15 +4,19 @@ import csv
 import json
 from math import isfinite
 from pathlib import Path
-from typing import Dict, List
+from typing import Callable, Dict, List
 
+from .auto_edges import MAX_DISTANCE, MIN_DISTANCE
 from .graph import SocGraph
 from .models import PersonNode
+
+DISTANCE_WEIGHT_MODEL = "distance_v2"
 
 
 def save_graph_json(path: str | Path, graph: SocGraph) -> None:
     path = Path(path)
     payload = {
+        "edge_weight_model": DISTANCE_WEIGHT_MODEL,
         "people": [person.to_dict() for person in graph.people.values()],
         "edges": [
             {
@@ -36,12 +40,32 @@ def load_graph_json(path: str | Path) -> SocGraph:
     data = json.loads(path.read_text(encoding="utf-8"))
     for person_payload in data.get("people", []):
         graph.add_person(PersonNode.from_dict(person_payload))
+
+    edge_rows: List[tuple[str, str, float, Dict[str, float]]] = []
     for edge_payload in data.get("edges", []):
+        weight = _parse_required_float(str(edge_payload["weight"]), field_name="weight")
+        edge_rows.append(
+            (
+                edge_payload["source"],
+                edge_payload["target"],
+                weight,
+                edge_payload.get("contexts") or {},
+            )
+        )
+
+    weight_model = data.get("edge_weight_model")
+    convert_legacy_strength = weight_model != DISTANCE_WEIGHT_MODEL
+    converter = (
+        _legacy_strength_to_distance_converter([weight for _, _, weight, _ in edge_rows])
+        if convert_legacy_strength
+        else _identity_weight
+    )
+    for source, target, weight, contexts in edge_rows:
         graph.add_connection(
-            edge_payload["source"],
-            edge_payload["target"],
-            edge_payload["weight"],
-            contexts=edge_payload.get("contexts"),
+            source,
+            target,
+            converter(weight),
+            contexts=contexts,
             symmetric=False,
         )
     return graph
@@ -157,18 +181,34 @@ def load_graph_csv(
                         notes=row.get("notes") or "",
                     )
                 )
+    edge_rows: List[tuple[str, str, float, Dict[str, float]]] = []
     if edges_file.exists():
         with edges_file.open("r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 weight = _parse_required_float(row.get("weight"), field_name="weight")
-                graph.add_connection(
-                    row["source"],
-                    row["target"],
-                    weight,
-                    contexts=_parse_contexts(row.get("contexts"), list_delimiter, kv_delimiter),
-                    symmetric=False,
+                edge_rows.append(
+                    (
+                        row["source"],
+                        row["target"],
+                        weight,
+                        _parse_contexts(row.get("contexts"), list_delimiter, kv_delimiter),
+                    )
                 )
+
+    converter = (
+        _legacy_strength_to_distance_converter([weight for _, _, weight, _ in edge_rows])
+        if _should_convert_legacy_csv_weights([weight for _, _, weight, _ in edge_rows])
+        else _identity_weight
+    )
+    for source, target, weight, contexts in edge_rows:
+        graph.add_connection(
+            source,
+            target,
+            converter(weight),
+            contexts=contexts,
+            symmetric=False,
+        )
     return graph
 
 
@@ -260,3 +300,43 @@ def _parse_json_list(value: str | None, field_name: str) -> List[dict]:
     if not all(isinstance(item, dict) for item in parsed):
         raise ValueError(f"{field_name} entries must be JSON objects")
     return parsed
+
+
+def _identity_weight(weight: float) -> float:
+    return float(weight)
+
+
+def _should_convert_legacy_csv_weights(weights: List[float]) -> bool:
+    if not weights:
+        return False
+    return not _looks_like_distance_weights(weights)
+
+
+def _looks_like_distance_weights(weights: List[float]) -> bool:
+    for weight in weights:
+        if not isfinite(weight):
+            return False
+        if weight < MIN_DISTANCE or weight > MAX_DISTANCE:
+            return False
+        if not float(weight).is_integer():
+            return False
+    return True
+
+
+def _legacy_strength_to_distance_converter(weights: List[float]) -> Callable[[float], float]:
+    finite_weights = [weight for weight in weights if isfinite(weight) and weight > 0]
+    max_strength = max(finite_weights, default=0.0)
+    if max_strength <= 0:
+        return lambda _weight: float(MAX_DISTANCE)
+
+    span = MAX_DISTANCE - MIN_DISTANCE
+
+    def _convert(weight: float) -> float:
+        if not isfinite(weight) or weight <= 0:
+            return float(MAX_DISTANCE)
+        normalised = weight / max_strength
+        raw_distance = MAX_DISTANCE - (normalised * span)
+        rounded = int(round(raw_distance))
+        return float(max(MIN_DISTANCE, min(MAX_DISTANCE, rounded)))
+
+    return _convert

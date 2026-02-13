@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
 
+from .auto_edges import upsert_person_with_auto_edges
 from .graph import SocGraph
 from .models import PersonNode
 
@@ -11,6 +12,7 @@ from .models import PersonNode
 class PersonEvent:
     person: PersonNode
     overwrite: bool = False
+    auto_top_k: int | None = None
 
 
 @dataclass
@@ -28,8 +30,16 @@ GraphEvent = PersonEvent | EdgeEvent
 class GraphIngestionService:
     """Applies node and edge events to a graph in batch mode."""
 
-    def __init__(self, graph: SocGraph) -> None:
+    def __init__(
+        self,
+        graph: SocGraph,
+        *,
+        auto_connect_people: bool = True,
+        auto_top_k: int | None = None,
+    ) -> None:
         self.graph = graph
+        self.auto_connect_people = auto_connect_people
+        self.auto_top_k = auto_top_k
 
     def apply(self, events: Iterable[GraphEvent]) -> None:
         for event in events:
@@ -38,7 +48,15 @@ class GraphIngestionService:
     def apply_person(self, person: PersonNode, overwrite: bool = False) -> None:
         """Helper for manual single-person updates."""
 
-        self.graph.add_person(person, overwrite=overwrite)
+        if not self.auto_connect_people:
+            self.graph.add_person(person, overwrite=overwrite)
+            return
+        upsert_person_with_auto_edges(
+            self.graph,
+            person,
+            overwrite=overwrite,
+            top_k=self.auto_top_k,
+        )
 
     def apply_edge(
         self,
@@ -60,7 +78,15 @@ class GraphIngestionService:
 
     def _apply_event(self, event: GraphEvent) -> None:
         if isinstance(event, PersonEvent):
-            self.graph.add_person(event.person, overwrite=event.overwrite)
+            if not self.auto_connect_people:
+                self.graph.add_person(event.person, overwrite=event.overwrite)
+                return
+            upsert_person_with_auto_edges(
+                self.graph,
+                event.person,
+                overwrite=event.overwrite,
+                top_k=event.auto_top_k if event.auto_top_k is not None else self.auto_top_k,
+            )
             return
         if isinstance(event, EdgeEvent):
             self.graph.add_connection(
